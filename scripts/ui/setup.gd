@@ -77,7 +77,8 @@ func _ready() -> void:
 	var count_group := ButtonGroup.new()
 	for t in Game.PIECE_TARGETS:
 		var b := Button.new()
-		b.text = str(t)
+		var g := CutGenerator.grid_for(t, _aspect)
+		b.text = str(g.x * g.y)
 		b.toggle_mode = true
 		b.button_group = count_group
 		b.button_pressed = t == _target
@@ -185,7 +186,7 @@ func _set_style(s: int) -> void:
 
 func _update_exact() -> void:
 	var g := CutGenerator.grid_for(_target, _aspect)
-	_exact_label.text = "Exactly %d pieces (%d × %d grid)" % [g.x * g.y, g.x, g.y]
+	_exact_label.text = "%d × %d grid" % [g.x, g.y]
 
 
 func _start() -> void:

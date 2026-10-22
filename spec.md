@@ -66,7 +66,7 @@ Launch → Home / Image Select → Puzzle Setup (pieces + style) → Play Screen
 
 ## 4. Piece Count
 
-The player chooses from five sizes. Each count is **approximate**, chosen so the pieces come out close to square on a 4:3 image. The UI labels them by their nominal size; the Setup screen also shows the exact count in smaller text.
+The player chooses from five sizes. Each size starts from a nominal target (64 to 1024) and is adjusted so the pieces come out close to square on a 4:3 image. The Setup screen labels each button with the **exact** piece count (63, 130, 252, 520, 1036) and shows the grid below the buttons.
 
 | Option label | Grid (cols × rows) | Actual pieces | Piece aspect (w : h) |
 |:------------:|:------------------:|--------------:|:--------------------:|
@@ -145,7 +145,11 @@ The board still sits on top and the tray at the bottom. The tray shrinks to abou
 ### 6.3 Tray
 - Holds every piece that hasn't been placed on the board yet. At the start, all pieces are in the tray in shuffled order.
 - Pieces appear at a uniform thumbnail size in a grid that scrolls sideways. Only visible pieces are drawn.
-- A counter shows how many pieces are left.
+- The tray's header bar shows a counter for how many pieces are left. Two buttons sit on its right:
+  - **Sort Edges** moves edge pieces to the front of the tray in this order: the top row (left to right), the left column (top to bottom), the right column (top to bottom), then the bottom row (left to right). Interior pieces follow in their current order.
+  - **Scramble** shuffles the tray into a new random order.
+
+  Both scroll the tray back to the start and count as an unsaved change.
 - Dragging a piece from the tray onto the board moves it there at the board's current zoom scale. Dragging a loose piece from the board back onto the tray returns it to the tray.
 
 ### 6.4 Piece Interaction

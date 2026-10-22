@@ -73,6 +73,7 @@ var _saved_label: Label
 var _menu: MenuButton
 var _divider: PanelContainer
 var _count_label: Label
+var _tray_buttons: HBoxContainer
 var _bottom_pad: Control
 var _overlay: DragOverlay
 var _toast: Label
@@ -291,24 +292,24 @@ func _build_ui() -> void:
 	vbox.add_child(_divider)
 	var div_row := HBoxContainer.new()
 	_divider.add_child(div_row)
-	var tray_label := Label.new()
-	tray_label.text = "Tray"
-	tray_label.add_theme_font_size_override("font_size", 22)
-	tray_label.add_theme_color_override("font_color", Game.COLOR_TEXT_DIM)
-	tray_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	tray_label.size_flags_stretch_ratio = 1.0
-	div_row.add_child(tray_label)
+	_count_label = Label.new()
+	_count_label.add_theme_font_size_override("font_size", 22)
+	_count_label.add_theme_color_override("font_color", Game.COLOR_TEXT_DIM)
+	_count_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_count_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	div_row.add_child(_count_label)
 	var grip := Control.new()
 	grip.custom_minimum_size = Vector2(80, 0)
 	grip.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	grip.draw.connect(_draw_grip.bind(grip))
 	div_row.add_child(grip)
-	_count_label = Label.new()
-	_count_label.add_theme_font_size_override("font_size", 22)
-	_count_label.add_theme_color_override("font_color", Game.COLOR_TEXT_DIM)
-	_count_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	_count_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	div_row.add_child(_count_label)
+	_tray_buttons = HBoxContainer.new()
+	_tray_buttons.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_tray_buttons.alignment = BoxContainer.ALIGNMENT_END
+	_tray_buttons.add_theme_constant_override("separation", 8)
+	div_row.add_child(_tray_buttons)
+	_tray_buttons.add_child(_tray_button("Sort Edges", _sort_edges))
+	_tray_buttons.add_child(_tray_button("Scramble", _scramble_tray))
 
 	tray = Tray.new()
 	vbox.add_child(tray)
@@ -347,6 +348,21 @@ func _build_ui() -> void:
 	_sound = AudioStreamPlayer.new()
 	_sound.stream = Game.snap_sound
 	add_child(_sound)
+
+
+func _tray_button(text: String, action: Callable) -> Button:
+	var b := Button.new()
+	b.text = text
+	b.focus_mode = Control.FOCUS_NONE
+	b.add_theme_font_size_override("font_size", 22)
+	for state in ["normal", "hover", "pressed", "hover_pressed"]:
+		var sb := Game._box(Game.COLOR_ACCENT if state.contains("pressed") else Game.COLOR_PANEL_LIGHT, 10, 14)
+		sb.content_margin_top = 4
+		sb.content_margin_bottom = 4
+		b.add_theme_stylebox_override(state, sb)
+	b.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	b.pressed.connect(action)
+	return b
 
 
 func _build_loading() -> Control:
@@ -494,6 +510,8 @@ func _begin_single(idx: int, pos: Vector2) -> void:
 		tray.stop()
 		_mode = Mode.TRAY_PENDING
 		_pending_index = tray.index_at(pos - tray.global_position)
+	elif _tray_buttons.get_children().any(func(btn: Control) -> bool: return _in(btn, pos)):
+		pass  # Sort / Scramble buttons handle their own taps.
 	elif _in(_divider, pos):
 		_mode = Mode.DIVIDER
 
@@ -656,6 +674,28 @@ func _on_snap() -> void:
 
 func _update_counts() -> void:
 	_count_label.text = "%d in tray · %d / %d placed" % [model.tray.size(), model.locked.size(), pieces.count]
+
+
+func _sort_edges() -> void:
+	if not running or model.tray.is_empty():
+		return
+	model.sort_tray_edges()
+	_after_tray_reorder("Edge pieces first")
+
+
+func _scramble_tray() -> void:
+	if not running or model.tray.is_empty():
+		return
+	model.shuffle_tray()
+	_after_tray_reorder("Tray scrambled")
+
+
+func _after_tray_reorder(message: String) -> void:
+	unsaved = true
+	tray.stop()
+	tray.scroll = 0.0
+	tray.refresh()
+	_show_toast(message)
 
 
 func _update_timer(force := false) -> void:

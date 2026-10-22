@@ -41,6 +41,39 @@ func is_complete() -> bool:
 	return locked.size() == pieces.count
 
 
+## Edge pieces to the front of the tray: top row (left to right), left column
+## (top to bottom), right column (top to bottom), bottom row (left to right).
+## Interior pieces follow in their current order.
+func sort_tray_edges() -> void:
+	var cols := pieces.cols
+	var rows := pieces.rows
+	var key := {}
+	for i in tray.size():
+		var id := tray[i]
+		var c := id % cols
+		var r := id / cols
+		var group := 4
+		var minor := i
+		if r == 0:
+			group = 0
+			minor = c
+		elif c == 0:
+			group = 1
+			minor = r
+		elif c == cols - 1:
+			group = 2
+			minor = r
+		elif r == rows - 1:
+			group = 3
+			minor = c
+		key[id] = group * 1_000_000 + minor
+	tray.sort_custom(func(a: int, b: int) -> bool: return key[a] < key[b])
+
+
+func shuffle_tray() -> void:
+	tray.shuffle()
+
+
 func take_from_tray(index: int) -> int:
 	return tray.pop_at(index)
 
