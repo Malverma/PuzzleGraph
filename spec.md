@@ -162,6 +162,18 @@ The board still sits on top and the tray at the bottom. The tray shrinks to abou
 - Timer. It pauses when the app goes to the background.
 - **Menu button (☰) in the top-right corner.**
 
+### 6.6 Look & Feel: Wooden Tabletop
+The game is meant to feel like a puzzle laid out on a wooden table.
+- **Table:** tiled oak planks behind every screen. On the Play screen the table is drawn in world space, so it pans and zooms with the pieces.
+- **Puzzle mat:** green felt inside the puzzle frame, with a raised walnut rim and a soft shadow on the table.
+- **Tray:** a darker walnut bed. Its grain scrolls with the pieces.
+- **Chrome:** the top bar, tray divider, menu popup and dialogs use dark walnut planks with brass nails.
+- **Buttons:**
+  - normal buttons are oak with dark "burned" text;
+  - selected or pressed buttons are honey wood with a brass rim;
+  - primary actions (Start, Continue) are cherry.
+- **Source art:** the textures were made in Pixelorama and are stored in `assets/ui/`, with editable `.pxo` sources in `assets/ui/src/`. The nine-patch textures are 96 px with 24 px borders and use lossless import. The tiling textures (table, tray, felt) are seamless and mipmapped.
+
 ---
 
 ## 7. Menu (Top Right)

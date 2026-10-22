@@ -25,10 +25,7 @@ func _ready() -> void:
 	_has_save = Game.has_save(Game.image_id)
 
 	set_anchors_preset(Control.PRESET_FULL_RECT)
-	var bg := ColorRect.new()
-	bg.color = Game.COLOR_BG
-	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
-	add_child(bg)
+	add_child(Game.table_bg())
 	_margin = MarginContainer.new()
 	_margin.set_anchors_preset(Control.PRESET_FULL_RECT)
 	add_child(_margin)
@@ -120,6 +117,8 @@ func _ready() -> void:
 		name.text = CutGenerator.STYLE_NAMES[s]
 		name.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		name.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		name.add_theme_color_override("font_color", Game.COLOR_INK)
+		name.add_theme_color_override("font_shadow_color", Color.TRANSPARENT)
 		box.add_child(name)
 		styles.add_child(b)
 
@@ -133,14 +132,14 @@ func _ready() -> void:
 		cont.text = "Continue · %d%%  (%d pcs, %s)" % [Game.save_progress(Game.image_id), int(data.get("total", 0)),
 				CutGenerator.STYLE_NAMES[CutGenerator.style_from_key(String(data.get("cutStyle", "RIBBON")))]]
 		cont.custom_minimum_size.y = 84
-		cont.add_theme_stylebox_override("normal", Game._box(Game.COLOR_ACCENT, 14))
+		Game.make_accent(cont)
 		cont.pressed.connect(_continue)
 		options.add_child(cont)
 	var start := Button.new()
 	start.text = "Start New" if _has_save else "Start"
 	start.custom_minimum_size.y = 84
 	if not _has_save:
-		start.add_theme_stylebox_override("normal", Game._box(Game.COLOR_ACCENT, 14))
+		Game.make_accent(start)
 	start.pressed.connect(_start)
 	options.add_child(start)
 

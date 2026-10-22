@@ -68,6 +68,7 @@ func _on_resized() -> void:
 	if model == null:
 		return
 	_update_workspace()
+	world.queue_redraw()
 	# Keep loose pieces reachable when the workspace shrinks (e.g. after rotation).
 	var changed := false
 	for id in model.loose:

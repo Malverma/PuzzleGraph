@@ -10,7 +10,7 @@ enum Mode { NONE, PIECE_DRAG, PAN, PINCH, TRAY_PENDING, TRAY_SCROLL, DIVIDER, MI
 enum MenuItem { HINT, SAVE, RESET, EXIT }
 
 const TOP_BAR_H := 76.0
-const DIVIDER_H := 52.0
+const DIVIDER_H := 64.0
 const DRAG_SLOP := 14.0
 const TAP_MS := 300
 const DOUBLE_TAP_MS := 320
@@ -66,7 +66,7 @@ var _last_tap_pos := Vector2.ZERO
 
 # Nodes
 var _top_bar: PanelContainer
-var _top_style: StyleBoxFlat
+var _top_style: StyleBoxTexture
 var _title: Label
 var _timer_label: Label
 var _saved_label: Label
@@ -219,11 +219,7 @@ func _on_exit_action(action: StringName) -> void:
 
 func _build_ui() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
-	var bg := ColorRect.new()
-	bg.color = Game.COLOR_BG
-	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
-	add_child(bg)
+	add_child(Game.table_bg())
 
 	var vbox := VBoxContainer.new()
 	vbox.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -231,10 +227,13 @@ func _build_ui() -> void:
 	add_child(vbox)
 
 	_top_bar = PanelContainer.new()
-	_top_style = StyleBoxFlat.new()
-	_top_style.bg_color = Game.COLOR_PANEL
-	_top_style.content_margin_left = 20
+	_top_style = Game.wood("panel", 20)
 	_top_style.content_margin_right = 12
+	_top_style.content_margin_bottom = 0
+	# Run the plank off the top and sides of the screen so only its lower edge shows.
+	_top_style.expand_margin_top = Game.WOOD_MARGIN
+	_top_style.expand_margin_left = Game.WOOD_MARGIN
+	_top_style.expand_margin_right = Game.WOOD_MARGIN
 	_top_bar.add_theme_stylebox_override("panel", _top_style)
 	vbox.add_child(_top_bar)
 	var bar := HBoxContainer.new()
@@ -283,10 +282,11 @@ func _build_ui() -> void:
 	vbox.add_child(board)
 
 	_divider = PanelContainer.new()
-	var div_style := StyleBoxFlat.new()
-	div_style.bg_color = Game.COLOR_PANEL
-	div_style.content_margin_left = 20
-	div_style.content_margin_right = 20
+	var div_style := Game.wood("panel", 20)
+	div_style.content_margin_top = 0
+	div_style.content_margin_bottom = 0
+	div_style.expand_margin_left = Game.WOOD_MARGIN
+	div_style.expand_margin_right = Game.WOOD_MARGIN
 	_divider.add_theme_stylebox_override("panel", div_style)
 	_divider.custom_minimum_size.y = DIVIDER_H
 	vbox.add_child(_divider)
@@ -356,7 +356,7 @@ func _tray_button(text: String, action: Callable) -> Button:
 	b.focus_mode = Control.FOCUS_NONE
 	b.add_theme_font_size_override("font_size", 22)
 	for state in ["normal", "hover", "pressed", "hover_pressed"]:
-		var sb := Game._box(Game.COLOR_ACCENT if state.contains("pressed") else Game.COLOR_PANEL_LIGHT, 10, 14)
+		var sb := Game.wood("selected" if state.contains("pressed") else "button", 14)
 		sb.content_margin_top = 4
 		sb.content_margin_bottom = 4
 		b.add_theme_stylebox_override(state, sb)
@@ -366,9 +366,8 @@ func _tray_button(text: String, action: Callable) -> Button:
 
 
 func _build_loading() -> Control:
-	var layer := ColorRect.new()
-	layer.color = Game.COLOR_BG
-	layer.set_anchors_preset(Control.PRESET_FULL_RECT)
+	var layer := Game.table_bg()
+	layer.mouse_filter = Control.MOUSE_FILTER_STOP
 	var center := CenterContainer.new()
 	center.set_anchors_preset(Control.PRESET_FULL_RECT)
 	layer.add_child(center)

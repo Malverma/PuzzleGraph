@@ -19,8 +19,8 @@ func _ready() -> void:
 func _draw() -> void:
 	var k := minf(size.x / PREVIEW_SIZE.x, size.y / PREVIEW_SIZE.y) * 0.92
 	var offset := (size - PREVIEW_SIZE * k) * 0.5
-	draw_rect(Rect2(offset, PREVIEW_SIZE * k), Color(1, 1, 1, 0.06))
+	draw_rect(Rect2(offset, PREVIEW_SIZE * k), Color(0, 0, 0, 0.1))
 	draw_set_transform(offset, 0.0, Vector2(k, k))
 	for line in _lines:
-		draw_polyline(line, Game.COLOR_TEXT, 1.5 / k, true)
+		draw_polyline(line, Game.COLOR_INK, 2.0 / k, true)
 	draw_set_transform(Vector2.ZERO)

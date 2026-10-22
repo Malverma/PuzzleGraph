@@ -11,10 +11,7 @@ var _margin: MarginContainer
 
 func _ready() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
-	var bg := ColorRect.new()
-	bg.color = Game.COLOR_BG
-	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
-	add_child(bg)
+	add_child(Game.table_bg())
 
 	_margin = MarginContainer.new()
 	_margin.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -78,13 +75,16 @@ func _make_card(entry: Dictionary) -> Button:
 	name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	name.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	name.clip_text = true
+	name.add_theme_color_override("font_color", Game.COLOR_INK)
+	name.add_theme_color_override("font_shadow_color", Color.TRANSPARENT)
 	row.add_child(name)
 	var progress := Game.save_progress(id)
 	if progress >= 0:
 		var badge := Label.new()
 		badge.text = "Continue · %d%%" % progress
 		badge.add_theme_font_size_override("font_size", 22)
-		badge.add_theme_color_override("font_color", Game.COLOR_HINT)
+		badge.add_theme_color_override("font_color", Color("#7a2f19"))
+		badge.add_theme_color_override("font_shadow_color", Color.TRANSPARENT)
 		row.add_child(badge)
 	return card
 

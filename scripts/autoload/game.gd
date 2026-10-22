@@ -9,16 +9,32 @@ const SETTINGS_PATH := "user://settings.cfg"
 const PUZZLE_HEIGHT := 3000.0
 const SAVE_SCHEMA := 1
 
-const COLOR_BG := Color("#14171c")
-const COLOR_PANEL := Color("#1f2630")
-const COLOR_PANEL_LIGHT := Color("#2d3440")
-const COLOR_BOARD := Color("#232a33")
-const COLOR_FRAME := Color("#2e3743")
-const COLOR_TRAY := Color("#181d24")
-const COLOR_ACCENT := Color("#4a90d9")
+const COLOR_BG := Color("#24140b")
+const COLOR_PANEL := Color("#4b2c19")
+const COLOR_PANEL_LIGHT := Color("#6e4527")
+const COLOR_BOARD := Color("#6e4527")
+const COLOR_FRAME := Color("#2f5d44")
+const COLOR_TRAY := Color("#371f12")
+const COLOR_ACCENT := Color("#e0a84a")
 const COLOR_HINT := Color("#ffd34d")
-const COLOR_TEXT := Color("#e8ecf1")
-const COLOR_TEXT_DIM := Color("#9aa5b4")
+const COLOR_TEXT := Color("#f6ead2")
+const COLOR_TEXT_DIM := Color("#d2b88f")
+## Text on the lighter oak/honey buttons, like a burned-in label.
+const COLOR_INK := Color("#2a170c")
+
+# Wooden tabletop textures (drawn in Pixelorama; sources in assets/ui/src).
+const TEX_TABLE := preload("res://assets/ui/table_wood.png")
+const TEX_TRAY := preload("res://assets/ui/tray_wood.png")
+const TEX_FELT := preload("res://assets/ui/felt.png")
+const WOOD := {
+	"panel": preload("res://assets/ui/panel_wood.png"),
+	"button": preload("res://assets/ui/button_wood.png"),
+	"pressed": preload("res://assets/ui/button_wood_pressed.png"),
+	"selected": preload("res://assets/ui/button_wood_selected.png"),
+	"accent": preload("res://assets/ui/button_wood_accent.png"),
+}
+## Nine-patch border width of the WOOD textures, in texture pixels.
+const WOOD_MARGIN := 24
 
 const SCENE_HOME := "res://scenes/home.tscn"
 const SCENE_SETUP := "res://scenes/setup.tscn"
@@ -233,40 +249,102 @@ func _box(color: Color, radius: int, pad := 16) -> StyleBoxFlat:
 	return sb
 
 
+## Wooden nine-patch stylebox. `kind` is a WOOD key.
+func wood(kind: String, pad := 16, tint := Color.WHITE) -> StyleBoxTexture:
+	var sb := StyleBoxTexture.new()
+	sb.texture = WOOD[kind]
+	sb.set_texture_margin_all(WOOD_MARGIN)
+	sb.content_margin_left = pad
+	sb.content_margin_right = pad
+	sb.content_margin_top = pad * 0.6
+	sb.content_margin_bottom = pad * 0.6
+	sb.modulate_color = tint
+	return sb
+
+
+## Full-rect tiled tabletop background.
+func table_bg() -> TextureRect:
+	var bg := TextureRect.new()
+	bg.texture = TEX_TABLE
+	bg.stretch_mode = TextureRect.STRETCH_TILE
+	bg.texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
+	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
+	return bg
+
+
+## Tiles `tex` over `rect` at `scale` texture pixels per unit. The CanvasItem
+## needs texture_repeat enabled.
+func draw_tiled(ci: CanvasItem, tex: Texture2D, rect: Rect2, scale: float, modulate := Color.WHITE) -> void:
+	ci.draw_set_transform(rect.position, 0.0, Vector2(scale, scale))
+	ci.draw_texture_rect(tex, Rect2(Vector2.ZERO, rect.size / scale), true, modulate)
+	ci.draw_set_transform(Vector2.ZERO)
+
+
+## Applies the wooden button look to one button (theme-wide or as overrides).
+func style_button(t: Theme, type: String, pad := 16) -> void:
+	t.set_stylebox("normal", type, wood("button", pad))
+	t.set_stylebox("hover", type, wood("button", pad, Color(1.08, 1.06, 1.02)))
+	t.set_stylebox("pressed", type, wood("selected", pad))
+	t.set_stylebox("hover_pressed", type, wood("selected", pad))
+	t.set_stylebox("disabled", type, wood("pressed", pad, Color(0.75, 0.72, 0.7)))
+	t.set_stylebox("focus", type, StyleBoxEmpty.new())
+	for c in ["font_color", "font_hover_color", "font_pressed_color", "font_hover_pressed_color", "font_focus_color"]:
+		t.set_color(c, type, COLOR_INK)
+	t.set_color("font_disabled_color", type, Color(COLOR_INK, 0.5))
+	t.set_color("icon_normal_color", type, COLOR_INK)
+	t.set_color("icon_hover_color", type, COLOR_INK)
+	t.set_color("icon_pressed_color", type, COLOR_INK)
+	t.set_color("icon_disabled_color", type, Color(COLOR_INK, 0.5))
+
+
+## Red-cherry primary-action button (Start, Continue).
+func make_accent(b: Button) -> void:
+	for state in ["normal", "hover", "pressed", "hover_pressed"]:
+		b.add_theme_stylebox_override(state, wood("accent", 16, Color(1.1, 1.08, 1.05) if state != "normal" else Color.WHITE))
+	for c in ["font_color", "font_hover_color", "font_pressed_color", "font_hover_pressed_color", "font_focus_color"]:
+		b.add_theme_color_override(c, COLOR_TEXT)
+
+
 func _build_theme() -> Theme:
 	var t := Theme.new()
 	t.default_font_size = 28
-	var normal := _box(COLOR_PANEL_LIGHT, 14)
-	var hover := _box(COLOR_PANEL_LIGHT.lightened(0.08), 14)
-	var pressed := _box(COLOR_ACCENT, 14)
-	var disabled := _box(COLOR_PANEL, 14)
 	for type in ["Button", "MenuButton"]:
-		t.set_stylebox("normal", type, normal)
-		t.set_stylebox("hover", type, hover)
-		t.set_stylebox("pressed", type, pressed)
-		t.set_stylebox("hover_pressed", type, pressed)
-		t.set_stylebox("disabled", type, disabled)
-		t.set_stylebox("focus", type, StyleBoxEmpty.new())
-		t.set_color("font_color", type, COLOR_TEXT)
-		t.set_color("font_hover_color", type, COLOR_TEXT)
-		t.set_color("font_pressed_color", type, Color.WHITE)
-		t.set_color("font_hover_pressed_color", type, Color.WHITE)
-		t.set_color("font_focus_color", type, COLOR_TEXT)
-		t.set_color("icon_normal_color", type, COLOR_TEXT)
+		style_button(t, type)
 	t.set_color("font_color", "Label", COLOR_TEXT)
-	t.set_stylebox("panel", "PanelContainer", _box(COLOR_PANEL, 18, 24))
-	t.set_stylebox("panel", "PopupMenu", _box(COLOR_PANEL_LIGHT, 12, 12))
-	t.set_stylebox("hover", "PopupMenu", _box(COLOR_ACCENT, 8, 12))
+	t.set_color("font_shadow_color", "Label", Color(0, 0, 0, 0.55))
+	t.set_constant("shadow_offset_x", "Label", 2)
+	t.set_constant("shadow_offset_y", "Label", 2)
+	t.set_stylebox("panel", "PanelContainer", wood("panel", 24))
+	t.set_stylebox("panel", "PopupMenu", wood("panel", 20))
+	t.set_stylebox("hover", "PopupMenu", wood("selected", 12))
+	var sep := StyleBoxLine.new()
+	sep.color = Color(0, 0, 0, 0.45)
+	sep.thickness = 2
+	t.set_stylebox("separator", "PopupMenu", sep)
 	t.set_font_size("font_size", "PopupMenu", 32)
 	t.set_constant("v_separation", "PopupMenu", 28)
 	t.set_color("font_color", "PopupMenu", COLOR_TEXT)
-	t.set_color("font_hover_color", "PopupMenu", Color.WHITE)
-	t.set_stylebox("panel", "AcceptDialog", _box(COLOR_PANEL, 0, 24))
-	t.set_stylebox("embedded_border", "Window", _box(COLOR_PANEL, 16, 8))
-	t.set_stylebox("embedded_unfocused_border", "Window", _box(COLOR_PANEL, 16, 8))
+	t.set_color("font_hover_color", "PopupMenu", COLOR_INK)
+	t.set_stylebox("panel", "AcceptDialog", wood("panel", 28))
+	# Dark walnut frame that wraps the title bar and the dialog panel.
+	var title_h := 56
+	var border := wood("panel", 0, Color(0.72, 0.66, 0.62))
+	border.expand_margin_top = title_h + 8
+	border.expand_margin_left = 8
+	border.expand_margin_right = 8
+	border.expand_margin_bottom = 8
+	t.set_stylebox("embedded_border", "Window", border)
+	t.set_stylebox("embedded_unfocused_border", "Window", border)
+	t.set_constant("title_height", "Window", title_h)
+	t.set_color("title_outline_modulate", "Window", Color(0, 0, 0, 0.6))
+	t.set_constant("title_outline_size", "Window", 4)
 	t.set_color("title_color", "Window", COLOR_TEXT)
 	t.set_font_size("title_font_size", "Window", 28)
-	t.set_stylebox("background", "ProgressBar", _box(COLOR_PANEL_LIGHT, 8, 0))
+	var groove := _box(Color(0, 0, 0, 0.45), 8, 0)
+	groove.border_color = Color(0, 0, 0, 0.6)
+	groove.set_border_width_all(2)
+	t.set_stylebox("background", "ProgressBar", groove)
 	t.set_stylebox("fill", "ProgressBar", _box(COLOR_ACCENT, 8, 0))
 	return t
 
@@ -275,7 +353,7 @@ func _make_menu_icon() -> Texture2D:
 	var img := Image.create_empty(40, 40, false, Image.FORMAT_RGBA8)
 	img.fill(Color.TRANSPARENT)
 	for y in [8, 18, 28]:
-		img.fill_rect(Rect2i(4, y, 32, 4), Color.WHITE)
+		img.fill_rect(Rect2i(4, y, 32, 5), Color.WHITE)
 	return ImageTexture.create_from_image(img)
 
 

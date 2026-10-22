@@ -4,6 +4,7 @@ extends Control
 
 const MIN_CELL := 130.0
 const FRICTION := 0.02  # velocity multiplier per second while flinging
+const TRAY_TEX_SCALE := 1.5
 
 var model: PuzzleModel
 var texture: Texture2D
@@ -18,6 +19,7 @@ var _scroll_tween: Tween
 
 func _ready() -> void:
 	clip_contents = true
+	texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	resized.connect(_layout)
@@ -117,7 +119,12 @@ func _process(delta: float) -> void:
 
 
 func _draw() -> void:
-	draw_rect(Rect2(Vector2.ZERO, size), Game.COLOR_TRAY)
+	# Walnut tray bed that slides with the scroll, with a recessed top edge.
+	var tw := Game.TEX_TRAY.get_width() * TRAY_TEX_SCALE
+	var off := fposmod(scroll, tw)
+	Game.draw_tiled(self, Game.TEX_TRAY, Rect2(-off, 0.0, size.x + tw, size.y), TRAY_TEX_SCALE)
+	for k in 6:
+		draw_rect(Rect2(0.0, k * 3.0, size.x, 3.0), Color(0, 0, 0, 0.4 - k * 0.065))
 	if model == null:
 		return
 	var n := model.tray.size()
