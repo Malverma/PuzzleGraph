@@ -18,7 +18,7 @@ const COLOR_TRAY := Color("#371f12")
 const COLOR_ACCENT := Color("#e0a84a")
 const COLOR_HINT := Color("#ffd34d")
 const COLOR_TEXT := Color("#f6ead2")
-const COLOR_TEXT_DIM := Color("#d2b88f")
+const COLOR_TEXT_DIM := Color("#f3dfbd")
 ## Text on the lighter oak/honey buttons, like a burned-in label.
 const COLOR_INK := Color("#2a170c")
 
@@ -262,14 +262,20 @@ func wood(kind: String, pad := 16, tint := Color.WHITE) -> StyleBoxTexture:
 	return sb
 
 
+## Screen pixels per texture pixel for the tiled tabletop. The tile textures
+## are pixel art pre-scaled 4x, so they are drawn shrunk with mipmaps to stay crisp.
+const TABLE_BG_SCALE := 0.5
+
+
 ## Full-rect tiled tabletop background.
-func table_bg() -> TextureRect:
-	var bg := TextureRect.new()
-	bg.texture = TEX_TABLE
-	bg.stretch_mode = TextureRect.STRETCH_TILE
+func table_bg() -> Control:
+	var bg := Control.new()
 	bg.texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
+	bg.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
+	bg.draw.connect(func() -> void: draw_tiled(bg, TEX_TABLE, Rect2(Vector2.ZERO, bg.size), TABLE_BG_SCALE))
+	bg.resized.connect(bg.queue_redraw)
 	return bg
 
 
@@ -326,10 +332,12 @@ func _build_theme() -> Theme:
 	t.set_constant("v_separation", "PopupMenu", 28)
 	t.set_color("font_color", "PopupMenu", COLOR_TEXT)
 	t.set_color("font_hover_color", "PopupMenu", COLOR_INK)
+	t.set_color("font_outline_color", "PopupMenu", Color(0.16, 0.08, 0.03, 0.8))
+	t.set_constant("outline_size", "PopupMenu", 6)
 	t.set_stylebox("panel", "AcceptDialog", wood("panel", 28))
 	# Dark walnut frame that wraps the title bar and the dialog panel.
 	var title_h := 56
-	var border := wood("panel", 0, Color(0.72, 0.66, 0.62))
+	var border := wood("panel", 0, Color(0.86, 0.8, 0.76))
 	border.expand_margin_top = title_h + 8
 	border.expand_margin_left = 8
 	border.expand_margin_right = 8

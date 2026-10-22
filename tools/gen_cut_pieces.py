@@ -205,24 +205,48 @@ def voronoi_cells(rng, cols, rows, cw, ch, jitter=0.35):
     return cells
 
 
-def octagon_cells(cols, rows, s):
+def octagon_cells(rng, cols, rows, s, shift=0.07, size_var=0.25, turn=14):
     """Truncated-square tiling: octagons on the grid, diamonds at interior vertices.
-    Octagon corners that touch the border stay square so the border is straight."""
-    k = s / (2 + math.sqrt(2))   # corner cut leg -> regular octagon
+    Each diamond is moved by up to shift*s, resized by up to +-size_var and turned by up to
+    +-turn degrees; border vertices slide along the border. Corners touching the border stay
+    square so the border is straight."""
+    k0 = s / (2 + math.sqrt(2))   # corner cut leg -> regular octagon
+    J = lambda a: rng.uniform(-a, a)
+    dia = {}                      # (r, c) grid vertex -> N, E, S, W diamond corners
+    for r in range(1, rows):
+        for c in range(1, cols):
+            x, y = c * s + J(shift * s), r * s + J(shift * s)
+            k, a = k0 * (1 + J(size_var)), math.radians(J(turn))
+            ca, sa = math.cos(a), math.sin(a)
+            dia[r, c] = [(x + u * ca - v * sa, y + u * sa + v * ca) for u, v in ((0, -k), (k, 0), (0, k), (-k, 0))]
+    top = {c: (c * s + J(shift * s), 0) for c in range(1, cols)}
+    bot = {c: (c * s + J(shift * s), rows * s) for c in range(1, cols)}
+    left = {r: (0, r * s + J(shift * s)) for r in range(1, rows)}
+    right = {r: (cols * s, r * s + J(shift * s)) for r in range(1, rows)}
+
+    def corner(r, c, first, second):
+        """Grid vertex (r, c) seen from one octagon: border point, square corner or diamond side."""
+        if (r in (0, rows)) and (c in (0, cols)):
+            return [(c * s, r * s)]
+        if r == 0:
+            return [top[c]]
+        if r == rows:
+            return [bot[c]]
+        if c == 0:
+            return [left[r]]
+        if c == cols:
+            return [right[r]]
+        N, E, S, W = dia[r, c]
+        return [{"N": N, "E": E, "S": S, "W": W}[q] for q in (first, second)]
+
     cells = []
     for r in range(rows):
         for c in range(cols):
-            x0, y0, x1, y1 = c * s, r * s, (c + 1) * s, (r + 1) * s
-            tl = [(x0, y0)] if (r == 0 or c == 0) else [(x0, y0 + k), (x0 + k, y0)]
-            tr = [(x1, y0)] if (r == 0 or c == cols - 1) else [(x1 - k, y0), (x1, y0 + k)]
-            br = [(x1, y1)] if (r == rows - 1 or c == cols - 1) else [(x1, y1 - k), (x1 - k, y1)]
-            bl = [(x0, y1)] if (r == rows - 1 or c == 0) else [(x0 + k, y1), (x0, y1 - k)]
-            cells.append({"row": r, "col": c, "type": "octagon", "poly": tl + tr + br + bl})
-    for r in range(1, rows):
-        for c in range(1, cols):
-            x, y = c * s, r * s
-            cells.append({"row": r - 0.5, "col": c - 0.5, "type": "diamond",
-                          "poly": [(x, y - k), (x + k, y), (x, y + k), (x - k, y)]})
+            poly = corner(r, c, "S", "E") + corner(r, c + 1, "W", "S") + \
+                   corner(r + 1, c + 1, "N", "W") + corner(r + 1, c, "E", "N")
+            cells.append({"row": r, "col": c, "type": "octagon", "poly": poly})
+    for (r, c), pts in dia.items():
+        cells.append({"row": r - 0.5, "col": c - 0.5, "type": "diamond", "poly": pts})
     return cells
 
 
@@ -257,14 +281,26 @@ def random_cut(rng, cfg):
 
 def octagon(rng, cfg):
     (cols, rows), (s, _) = cfg["grid"], cfg["cell"]
-    cells = octagon_cells(cols, rows, s)
+    cells = octagon_cells(rng, cols, rows, s)
 
     def prof(i, j, p, q):
-        # diamond tabs always push into the octagon; octagon/octagon edges pick a side
-        flip = True if cells[j]["type"] == "diamond" else rng.random() < 0.5
+        # diamond tabs mostly push into the octagon (sometimes into the diamond);
+        # octagon/octagon edges pick a side and long ones may carry two knobs
         L = math.hypot(q[0] - p[0], q[1] - p[1])
-        size = max(0.08, min(0.12, 0.055 * s / L))     # similar absolute knob size on every side
-        return knob_profile(rng, flip=flip, size=size, jitter=0.025)
+        bow = wave_fn(rng, 0.05)
+        if cells[j]["type"] == "diamond":
+            size = max(0.08, min(0.15, 0.055 * s / L)) * rng.uniform(0.8, 1.2)
+            pts = knob_profile(rng, flip=rng.random() < 0.8, size=size, jitter=0.05)
+        elif L > 0.65 * s and rng.random() < 0.35:
+            flip, pts = rng.random() < 0.5, []
+            for a in (0, 0.5):
+                size = max(0.10, min(0.16, 0.06 * s / (L / 2))) * rng.uniform(0.85, 1.15)
+                pts += [(a + u / 2, v / 2) for u, v in knob_profile(rng, flip=flip, size=size, jitter=0.05)]
+                flip = not flip
+        else:
+            size = max(0.08, min(0.12, 0.055 * s / L)) * rng.uniform(0.8, 1.25)
+            pts = knob_profile(rng, flip=rng.random() < 0.5, size=size, jitter=0.05)
+        return [(u, v + bow(u)) for u, v in pts]
     return build_pieces(cells, cols * s, rows * s, prof)
 
 

@@ -4,7 +4,7 @@ extends Control
 
 const MIN_CELL := 130.0
 const FRICTION := 0.02  # velocity multiplier per second while flinging
-const TRAY_TEX_SCALE := 1.5
+const TRAY_TEX_SCALE := 0.75
 
 var model: PuzzleModel
 var texture: Texture2D

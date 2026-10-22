@@ -4,3 +4,7 @@
 *.tmp
 __pycache__/
 *.pyc
+
+# Style reference images (not shipped)
+/wood.webp
+/wood.webp.import

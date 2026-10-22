@@ -6,8 +6,8 @@ const LOOSE_OUTLINE := Color(0, 0, 0, 0.55)
 const LOCKED_OUTLINE := Color(0, 0, 0, 0.12)
 const SHADOW := Color(0, 0, 0, 0.35)
 ## Screen pixels per texture pixel for the table and felt at zoom 1.
-const TABLE_SCALE := 1.6
-const FELT_SCALE := 1.6
+const TABLE_SCALE := 0.8
+const FELT_SCALE := 0.8
 
 
 var board: Control

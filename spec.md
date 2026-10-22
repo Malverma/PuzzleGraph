@@ -163,16 +163,16 @@ The board still sits on top and the tray at the bottom. The tray shrinks to abou
 - **Menu button (☰) in the top-right corner.**
 
 ### 6.6 Look & Feel: Wooden Tabletop
-The game is meant to feel like a puzzle laid out on a wooden table.
+The game is meant to feel like a puzzle laid out on a wooden table. The art is cartoon pixel art in the style of `wood.webp`: flat plank colors, short hard-edged grain dashes, a light highlight row on top, a shadow row underneath and dark outlines.
 - **Table:** tiled oak planks behind every screen. On the Play screen the table is drawn in world space, so it pans and zooms with the pieces.
 - **Puzzle mat:** green felt inside the puzzle frame, with a raised walnut rim and a soft shadow on the table.
-- **Tray:** a darker walnut bed. Its grain scrolls with the pieces.
-- **Chrome:** the top bar, tray divider, menu popup and dialogs use dark walnut planks with brass nails.
+- **Tray:** a slightly deeper warm-brown plank bed (still light, not dark walnut). Its grain scrolls with the pieces.
+- **Chrome:** the top bar, tray divider, menu popup and dialogs use mid-tone wooden sign planks with metal bolts.
 - **Buttons:**
   - normal buttons are oak with dark "burned" text;
   - selected or pressed buttons are honey wood with a brass rim;
   - primary actions (Start, Continue) are cherry.
-- **Source art:** the textures were made in Pixelorama and are stored in `assets/ui/`, with editable `.pxo` sources in `assets/ui/src/`. The nine-patch textures are 96 px with 24 px borders and use lossless import. The tiling textures (table, tray, felt) are seamless and mipmapped.
+- **Source art:** the textures were made in Pixelorama and are stored in `assets/ui/`, with editable `.pxo` sources in `assets/ui/src/`. The nine-patch textures are drawn at 48 px, scaled up 2× to 96 px with 24 px borders, and use lossless import. The tiling textures (table, tray, felt) are seamless. They are scaled up 4× with nearest-neighbour filtering and drawn shrunk with mipmaps, so the pixel edges stay crisp.
 
 ---
 
