@@ -4,6 +4,10 @@ extends Node
 const PIECE_TARGETS: Array[int] = [64, 128, 256, 512, 1024]
 const CATALOG_PATH := "res://puzzles/catalog.json"
 const SAVE_DIR := "user://saves"
+## Photos and device images the player turned into puzzles.
+const PHOTO_DIR := "user://photos"
+## Longest side kept when importing an image (the device cap still applies on load).
+const IMPORT_MAX := 4096
 const SETTINGS_PATH := "user://settings.cfg"
 ## Puzzle world height in board units, independent of texture resolution.
 const PUZZLE_HEIGHT := 3000.0
@@ -39,6 +43,8 @@ const WOOD_MARGIN := 24
 const SCENE_HOME := "res://scenes/home.tscn"
 const SCENE_SETUP := "res://scenes/setup.tscn"
 const SCENE_PLAY := "res://scenes/play.tscn"
+const SCENE_CREATE := "res://scenes/create.tscn"
+const SCENE_CAMERA := "res://scenes/camera.tscn"
 
 var catalog: Array[Dictionary] = []
 var settings := ConfigFile.new()
@@ -52,12 +58,15 @@ var cut_style := CutGenerator.Style.RIBBON
 var seed_value := 0
 ## Save data to restore when entering Play; empty for a fresh puzzle.
 var resume: Dictionary = {}
+## Where the Setup screen's Back button goes.
+var setup_back := SCENE_HOME
 
 var _thumbs := {}
 
 
 func _ready() -> void:
 	DirAccess.make_dir_recursive_absolute(SAVE_DIR)
+	DirAccess.make_dir_recursive_absolute(PHOTO_DIR)
 	settings.load(SETTINGS_PATH)
 	_load_catalog()
 	get_tree().root.theme = _build_theme()
@@ -82,6 +91,94 @@ func _load_catalog() -> void:
 				catalog.append(e)
 	if catalog.is_empty():
 		push_error("Puzzle catalog missing or empty: " + CATALOG_PATH)
+	_load_user_images()
+
+
+## Player images live in PHOTO_DIR as <id>.jpg + <id>_thumb.jpg + <id>.json (title, time).
+func _load_user_images() -> void:
+	var found: Array[Dictionary] = []
+	for f in DirAccess.get_files_at(PHOTO_DIR):
+		if not f.ends_with(".json"):
+			continue
+		var id := f.get_basename()
+		var meta = JSON.parse_string(FileAccess.get_file_as_string(PHOTO_DIR.path_join(f)))
+		var image := PHOTO_DIR.path_join(id + ".jpg")
+		if meta is Dictionary and FileAccess.file_exists(image):
+			found.append({ "id": id, "title": String(meta.get("title", "My Image")), "image": image,
+					"thumb": PHOTO_DIR.path_join(id + "_thumb.jpg"), "user": true, "created": int(meta.get("created", 0)) })
+	found.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a.created > b.created)
+	catalog.append_array(found)
+
+
+func is_user_image(id: String) -> bool:
+	return bool(get_entry(id).get("user", false))
+
+
+## Saves `img` as a new player image and adds it to the catalog. Returns its id.
+func import_image(img: Image, title: String) -> String:
+	if img.is_compressed():
+		img.decompress()
+	img.convert(Image.FORMAT_RGB8)
+	var longest := maxi(img.get_width(), img.get_height())
+	if longest > IMPORT_MAX:
+		var k := float(IMPORT_MAX) / longest
+		img.resize(roundi(img.get_width() * k), roundi(img.get_height() * k), Image.INTERPOLATE_LANCZOS)
+	var now := int(Time.get_unix_time_from_system())
+	var id := "user_%d_%03d" % [now, randi() % 1000]
+	var image := PHOTO_DIR.path_join(id + ".jpg")
+	var thumb_path := PHOTO_DIR.path_join(id + "_thumb.jpg")
+	if img.save_jpg(image, 0.92) != OK:
+		push_error("Could not save imported image")
+		return ""
+	var thumb := img.duplicate() as Image
+	thumb.resize(512, maxi(1, roundi(512.0 * img.get_height() / img.get_width())), Image.INTERPOLATE_LANCZOS)
+	thumb.save_jpg(thumb_path, 0.85)
+	var f := FileAccess.open(PHOTO_DIR.path_join(id + ".json"), FileAccess.WRITE)
+	f.store_string(JSON.stringify({ "title": title, "created": now }))
+	f.close()
+	var entry := { "id": id, "title": title, "image": image, "thumb": thumb_path, "user": true, "created": now }
+	# Newest player image first, after the bundled ones.
+	var at := catalog.size()
+	for i in catalog.size():
+		if catalog[i].get("user", false):
+			at = i
+			break
+	catalog.insert(at, entry)
+	return id
+
+
+## Decodes PNG / JPEG / WebP bytes by their signature (picked files may be
+## content:// URIs with no extension).
+func image_from_bytes(bytes: PackedByteArray) -> Image:
+	if bytes.size() < 12:
+		return null
+	var img := Image.new()
+	var err := ERR_FILE_UNRECOGNIZED
+	if bytes[0] == 0x89 and bytes[1] == 0x50:
+		err = img.load_png_from_buffer(bytes)
+	elif bytes[0] == 0xFF and bytes[1] == 0xD8:
+		err = img.load_jpg_from_buffer(bytes)
+	elif bytes.slice(0, 4).get_string_from_ascii() == "RIFF" and bytes.slice(8, 12).get_string_from_ascii() == "WEBP":
+		err = img.load_webp_from_buffer(bytes)
+	return img if err == OK and not img.is_empty() else null
+
+
+## A short title for a new player image, e.g. "Photo · Oct 22, 17:05".
+func new_image_title(kind: String) -> String:
+	var t := Time.get_datetime_dict_from_system()
+	var months := ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+	return "%s · %s %d, %02d:%02d" % [kind, months[int(t.month) - 1], t.day, t.hour, t.minute]
+
+
+## Ids that have a save, most recently saved first.
+func saved_ids() -> Array[String]:
+	var out: Array[String] = []
+	for e in catalog:
+		if has_save(e.id):
+			out.append(e.id)
+	out.sort_custom(func(a: String, b: String) -> bool:
+		return FileAccess.get_modified_time(save_path(a)) > FileAccess.get_modified_time(save_path(b)))
+	return out
 
 
 func get_entry(id: String) -> Dictionary:
@@ -101,7 +198,9 @@ func load_thumb(id: String) -> Texture2D:
 	var e := get_entry(id)
 	var tex: Texture2D = null
 	var thumb_path := String(e.get("thumb", ""))
-	if thumb_path != "" and ResourceLoader.exists(thumb_path):
+	if thumb_path.begins_with("user://") and FileAccess.file_exists(thumb_path):
+		tex = ImageTexture.create_from_image(Image.load_from_file(thumb_path))
+	elif thumb_path != "" and ResourceLoader.exists(thumb_path):
 		tex = load(thumb_path)
 	elif ResourceLoader.exists(String(e.get("image", ""))):
 		var img := _image_from(load(e.image))
@@ -114,7 +213,8 @@ func load_thumb(id: String) -> Texture2D:
 ## Full-resolution puzzle texture, downsampled to the device budget, with mipmaps.
 func load_puzzle_texture(id: String) -> Texture2D:
 	var e := get_entry(id)
-	var img := _image_from(load(e.image))
+	var path := String(e.image)
+	var img: Image = Image.load_from_file(path) if path.begins_with("user://") else _image_from(load(path))
 	var cap := max_texture_size()
 	var longest := maxi(img.get_width(), img.get_height())
 	if longest > cap:

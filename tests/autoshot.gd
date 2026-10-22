@@ -97,6 +97,28 @@ func _run() -> void:
 	await _wait(0.1)
 	print("[autoshot] drag test: tray %d -> %d, piece %d state=%d (2 = locked)" % [tray_before, model.tray.size(), id0, model.state[id0]])
 
+	# A quick drag on a placed piece pans; holding it lifts it off again.
+	var placed_at: Vector2 = play.board.global_position + play.board.world_to_screen(model.pieces.centers[id0])
+	var center_before: Vector2 = play.board.center
+	_touch(placed_at, true)
+	_drag(placed_at + Vector2(60, 0))
+	await _wait(0.4)
+	_touch(placed_at + Vector2(60, 0), false)
+	await _wait(0.1)
+	print("[autoshot] quick drag on placed piece: still locked=%s, panned=%s" % [model.state[id0] == PuzzleModel.LOCKED, play.board.center != center_before])
+	play.board.set_view(1.0, play.board.workspace.get_center())
+	await _wait(0.1)
+	placed_at = play.board.global_position + play.board.world_to_screen(model.pieces.centers[id0])
+	var locked_n: int = model.locked.size()
+	_touch(placed_at, true)
+	await _wait(0.45)
+	_drag(placed_at + Vector2(80, 120))
+	await _wait(0.05)
+	_touch(placed_at + Vector2(80, 120), false)
+	await _wait(0.1)
+	print("[autoshot] hold-lift placed piece: state=%d (1 = on board), locked %d -> %d" % [model.state[id0], locked_n, model.locked.size()])
+	await _shot("06b_lifted_placed_piece")
+
 	play.save_game(true)
 	print("[autoshot] save exists: ", Game.has_save("img_03"), " progress: ", Game.save_progress("img_03"), "%")
 

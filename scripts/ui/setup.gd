@@ -39,7 +39,7 @@ func _ready() -> void:
 	var back := Button.new()
 	back.text = "Back"
 	back.custom_minimum_size = Vector2(120, 64)
-	back.pressed.connect(func() -> void: Game.go(Game.SCENE_HOME))
+	back.pressed.connect(_back)
 	header.add_child(back)
 	var title := Label.new()
 	title.text = Game.title_of(Game.image_id)
@@ -204,6 +204,10 @@ func _continue() -> void:
 		Game.go(Game.SCENE_PLAY)
 
 
+func _back() -> void:
+	Game.go(Game.setup_back)
+
+
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_GO_BACK_REQUEST:
-		Game.go(Game.SCENE_HOME)
+		_back()

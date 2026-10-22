@@ -99,6 +99,12 @@ func lock(id: int) -> void:
 	locked.append(id)
 
 
+## Lifts a placed piece off its spot so it can be moved again.
+func unlock(id: int) -> void:
+	locked.erase(id)
+	state[id] = ON_BOARD
+
+
 func unplaced() -> Array[int]:
 	var out: Array[int] = []
 	for i in pieces.count:

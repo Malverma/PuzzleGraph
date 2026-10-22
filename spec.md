@@ -26,14 +26,29 @@ Puzzle Graph is an offline Android jigsaw puzzle game. The player picks one of 5
 ## 2. Core Flow
 
 ```
-Launch → Home / Image Select → Puzzle Setup (pieces + style) → Play Screen
+Launch → Home ─┬─ Take Photo (camera) ─────┐
+               ├─ Create Puzzle (device file / default background) ─┤
+               │                          ↓
+               │          Puzzle Setup (pieces + style) → Play Screen
+               └─ Saved puzzle (tap to continue) ───────────→ Play Screen
+Home / Play
                 ↑                                                  │
                 └────────────── Android Back button ───────────────┤
                                                                    │
                                                      Completion Screen
 ```
 
-1. **Home / Image Select:** a grid of the 5 bundled images. Images that have a saved game show a "Continue" badge.
+1. **Home:**
+   - Two cards side by side, the same size as the puzzle cards:
+     - **Take Photo** (left) opens the camera.
+     - **Create Puzzle** (right) opens a picker with **Choose Image from Device** (the system file picker; PNG, JPEG or WebP), the 5 default backgrounds, and any images the player added earlier.
+   - A **Saved Puzzles** divider follows. Under it are cards for every puzzle with a save, newest first, each showing its progress %. Tapping one continues it directly.
+1a. **Take Photo:**
+   - A live viewfinder from the back camera with a **Take Photo** shutter, then **Retake** or **Use Photo**.
+   - The app asks for the camera permission the first time.
+1b. **Player images:**
+   - Photos and picked files are copied into `user://photos/` as `<id>.jpg` (longest side up to 4096 px), with a 512 px thumbnail and a small JSON (title, created time).
+   - They work like bundled images: setup, saves and the Create picker under "Your Images".
 2. **Puzzle Setup:** choose the piece count and cut style, then tap **Start**.
 3. **Play Screen:** the board on top, the tray on the bottom, and the menu button in the top-right corner. The Android Back button auto-saves and returns to Home.
 4. **Completion:** when the last piece is placed, play a celebration animation and show the elapsed time, the number of hints used, and the options **Play Again** and **Choose Another Image**.
@@ -154,7 +169,7 @@ The board still sits on top and the tray at the bottom. The tray shrinks to abou
 
 ### 6.4 Piece Interaction
 - **Pick up:** touch and drag. The piece lifts with a slight scale-up (1.05×) and a drop shadow, and comes to the front.
-- **Snap:** when the player drops a piece within a **snap tolerance** of its correct position, it snaps into place. The tolerance is 25% of the piece's width, measured in board coordinates. A snap triggers a short haptic tick and a sound. Locked pieces can't be moved again.
+- **Snap:** when the player drops a piece within a **snap tolerance** of its correct position, it snaps into place. The tolerance is 25% of the piece's width, measured in board coordinates. A snap triggers a short haptic tick and a sound. A placed piece can still be moved. Hold it for about 0.25 s to lift it off again; a quicker drag pans the board. A lifted piece counts as unplaced until it snaps back into place.
 - Only one piece can be dragged at a time.
 
 ### 6.5 Top Bar

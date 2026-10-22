@@ -231,6 +231,16 @@ func piece_at(p: Vector2) -> int:
 	return best
 
 
+## Placed piece under `p` (world), or -1. Loose pieces are checked first by piece_at.
+func placed_piece_at(p: Vector2) -> int:
+	var ps := model.pieces
+	for i in range(model.locked.size() - 1, -1, -1):
+		var id := model.locked[i]
+		if ps.contains(id, p - ps.centers[id]):
+			return id
+	return -1
+
+
 func set_hint(id: int) -> void:
 	hint_id = id
 	hint_time = 0.0

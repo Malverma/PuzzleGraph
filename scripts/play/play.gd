@@ -6,7 +6,7 @@ const Board := preload("res://scripts/play/board.gd")
 const Tray := preload("res://scripts/play/tray.gd")
 const DragOverlay := preload("res://scripts/play/drag_overlay.gd")
 
-enum Mode { NONE, PIECE_DRAG, PAN, PINCH, TRAY_PENDING, TRAY_SCROLL, DIVIDER, MINIMAP }
+enum Mode { NONE, PIECE_DRAG, PAN, PINCH, TRAY_PENDING, TRAY_SCROLL, DIVIDER, MINIMAP, PLACED_PENDING }
 enum MenuItem { HINT, SAVE, RESET, EXIT }
 
 const TOP_BAR_H := 60.0
@@ -15,6 +15,8 @@ const DRAG_SLOP := 14.0
 const TAP_MS := 300
 const DOUBLE_TAP_MS := 320
 const LONG_PRESS_MS := 350
+## Hold time before a placed piece lifts off; a quicker drag pans the board instead.
+const PLACED_HOLD_MS := 250
 ## Snap distance as a fraction of the piece (cell) width, in board units.
 const SNAP_TOLERANCE := 0.25
 const AUTOSAVE_SECONDS := 60.0
@@ -59,6 +61,8 @@ var _pinch_z0 := 1.0
 var _drag_id := -1
 var _drag_offset := Vector2.ZERO
 var _pending_index := -1
+## Placed piece under the finger while waiting to see if it is a hold or a pan.
+var _pending_placed := -1
 var _last_x := 0.0
 var _last_vx := 0.0
 var _last_tap_ms := -100000
@@ -166,6 +170,8 @@ func _process(delta: float) -> void:
 	if _mode == Mode.TRAY_PENDING and _pending_index >= 0 \
 			and Time.get_ticks_msec() - _press_ms >= LONG_PRESS_MS:
 		_pick_from_tray(_pending_index, _touches.get(_primary, _press_pos))
+	if _mode == Mode.PLACED_PENDING and Time.get_ticks_msec() - _press_ms >= PLACED_HOLD_MS:
+		_lift_placed(_pending_placed, _touches.get(_primary, _press_pos))
 	if board.hint_id >= 0:
 		_hint_left -= delta
 		if _hint_left <= 0.0:
@@ -461,7 +467,7 @@ func _input(event: InputEvent) -> void:
 			_touches[e.index] = e.position
 			if _touches.size() == 1:
 				_begin_single(e.index, e.position)
-			elif _touches.size() == 2 and (_mode == Mode.PAN or _mode == Mode.NONE):
+			elif _touches.size() == 2 and (_mode == Mode.PAN or _mode == Mode.NONE or _mode == Mode.PLACED_PENDING):
 				_begin_pinch()
 		else:
 			_touches.erase(e.index)
@@ -516,8 +522,9 @@ func _begin_single(idx: int, pos: Vector2) -> void:
 			board.refresh()
 			_begin_drag(id, pos, screen - pos)
 		else:
-			_mode = Mode.PAN
 			_anchor = wp
+			_pending_placed = board.placed_piece_at(wp)
+			_mode = Mode.PLACED_PENDING if _pending_placed >= 0 else Mode.PAN
 	elif _in(tray, pos):
 		tray.stop()
 		_mode = Mode.TRAY_PENDING
@@ -548,6 +555,10 @@ func _on_drag(e: InputEventScreenDrag) -> void:
 				_overlay.move_to(e.position + _drag_offset)
 		Mode.PAN:
 			if e.index == _primary:
+				board.set_zoom_anchored(board.zoom, _anchor, _board_local(e.position))
+		Mode.PLACED_PENDING:
+			if e.index == _primary and (e.position - _press_pos).length() > DRAG_SLOP:
+				_mode = Mode.PAN
 				board.set_zoom_anchored(board.zoom, _anchor, _board_local(e.position))
 		Mode.PINCH:
 			if _touches.size() >= 2:
@@ -590,7 +601,7 @@ func _end_touch(idx: int, pos: Vector2) -> void:
 				_mode = Mode.PAN
 			elif _touches.is_empty():
 				_mode = Mode.NONE
-		Mode.PAN:
+		Mode.PAN, Mode.PLACED_PENDING:
 			if idx == _primary:
 				_check_double_tap(pos)
 				_mode = Mode.NONE
@@ -633,6 +644,17 @@ func _pick_from_tray(index: int, finger: Vector2) -> void:
 	var lift := maxf(pieces.max_extent * board.view_scale() * 0.6, 56.0)
 	_begin_drag(id, finger, Vector2(0.0, -lift))
 	_update_counts()
+
+
+## Picks a correctly placed piece back up; it counts as unplaced until it snaps again.
+func _lift_placed(id: int, finger: Vector2) -> void:
+	_pending_placed = -1
+	var screen := board.global_position + board.world_to_screen(pieces.centers[id])
+	model.unlock(id)
+	unsaved = true
+	board.refresh()
+	_update_counts()
+	_begin_drag(id, finger, screen - finger)
 
 
 func _begin_drag(id: int, finger: Vector2, offset: Vector2) -> void:
