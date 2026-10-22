@@ -164,11 +164,7 @@ func _heading(text: String) -> Label:
 
 func _layout() -> void:
 	_body.vertical = size.x <= size.y
-	var safe := 0.0
-	if OS.has_feature("mobile"):
-		var win := DisplayServer.window_get_size()
-		if win.y > 0:
-			safe = DisplayServer.get_display_safe_area().position.y * get_viewport_rect().size.y / win.y
+	var safe := Game.safe_insets(get_viewport()).x
 	for side in ["left", "right", "bottom"]:
 		_margin.add_theme_constant_override("margin_" + side, 28)
 	_margin.add_theme_constant_override("margin_top", int(28 + safe))

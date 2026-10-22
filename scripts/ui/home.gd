@@ -22,12 +22,8 @@ func _ready() -> void:
 
 	var title := Label.new()
 	title.text = "Puzzle Graph"
-	title.add_theme_font_size_override("font_size", 56)
+	title.add_theme_font_size_override("font_size", 48)
 	col.add_child(title)
-	var subtitle := Label.new()
-	subtitle.text = "Choose an image"
-	subtitle.add_theme_color_override("font_color", Game.COLOR_TEXT_DIM)
-	col.add_child(subtitle)
 
 	var scroll := ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -94,7 +90,9 @@ func _layout() -> void:
 	var safe := _safe_top()
 	_margin.add_theme_constant_override("margin_left", int(pad))
 	_margin.add_theme_constant_override("margin_right", int(pad))
-	_margin.add_theme_constant_override("margin_top", int(pad + safe))
+	# The title sits at the top left, clear of a centred camera hole, so only
+	# the cards need to start below the cutout.
+	_margin.add_theme_constant_override("margin_top", int(maxf(8.0, safe - 64.0)))
 	_margin.add_theme_constant_override("margin_bottom", int(pad))
 	var width := size.x - pad * 2.0
 	var columns := clampi(int(width / 300.0), 1, 5)
@@ -105,12 +103,7 @@ func _layout() -> void:
 
 
 func _safe_top() -> float:
-	if not OS.has_feature("mobile"):
-		return 0.0
-	var win := DisplayServer.window_get_size()
-	if win.y <= 0:
-		return 0.0
-	return DisplayServer.get_display_safe_area().position.y * get_viewport_rect().size.y / win.y
+	return Game.safe_insets(get_viewport()).x
 
 
 func _open(id: String) -> void:

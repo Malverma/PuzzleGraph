@@ -249,6 +249,41 @@ func _box(color: Color, radius: int, pad := 16) -> StyleBoxFlat:
 	return sb
 
 
+## Top and bottom screen insets in viewport units. The app runs immersive
+## (no status or navigation bar), so only display cutouts (notches, camera
+## holes) need to be kept clear.
+func safe_insets(viewport: Viewport) -> Vector2:
+	if not OS.has_feature("mobile"):
+		return Vector2.ZERO
+	var win := DisplayServer.window_get_size()
+	if win.y <= 0:
+		return Vector2.ZERO
+	var top := 0.0
+	var bottom := 0.0
+	for r: Rect2 in DisplayServer.get_display_cutouts():
+		if r.get_center().y < win.y * 0.5:
+			top = maxf(top, r.end.y)
+		else:
+			bottom = maxf(bottom, win.y - r.position.y)
+	return Vector2(top, bottom) * (viewport.get_visible_rect().size.y / win.y)
+
+
+## The cutouts along the top edge merged into one rect, in viewport units
+## (empty when there are none).
+func top_cutout(viewport: Viewport) -> Rect2:
+	if not OS.has_feature("mobile"):
+		return Rect2()
+	var win := DisplayServer.window_get_size()
+	if win.y <= 0:
+		return Rect2()
+	var out := Rect2()
+	for r: Rect2 in DisplayServer.get_display_cutouts():
+		if r.has_area() and r.get_center().y < win.y * 0.5:
+			out = r if not out.has_area() else out.merge(r)
+	var k := viewport.get_visible_rect().size / Vector2(win)
+	return Rect2(out.position * k, out.size * k)
+
+
 ## Wooden nine-patch stylebox. `kind` is a WOOD key.
 func wood(kind: String, pad := 16, tint := Color.WHITE) -> StyleBoxTexture:
 	var sb := StyleBoxTexture.new()

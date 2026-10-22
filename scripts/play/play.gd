@@ -9,7 +9,7 @@ const DragOverlay := preload("res://scripts/play/drag_overlay.gd")
 enum Mode { NONE, PIECE_DRAG, PAN, PINCH, TRAY_PENDING, TRAY_SCROLL, DIVIDER, MINIMAP }
 enum MenuItem { HINT, SAVE, RESET, EXIT }
 
-const TOP_BAR_H := 76.0
+const TOP_BAR_H := 60.0
 const DIVIDER_H := 64.0
 const DRAG_SLOP := 14.0
 const TAP_MS := 300
@@ -68,6 +68,9 @@ var _last_tap_pos := Vector2.ZERO
 var _top_bar: PanelContainer
 var _top_style: StyleBoxTexture
 var _title: Label
+## Gap between the title and the right-hand items; holds a centred camera hole.
+var _title_gap: Control
+var _top_h := TOP_BAR_H
 var _timer_label: Label
 var _saved_label: Label
 var _menu: MenuButton
@@ -209,10 +212,6 @@ func _request_exit() -> void:
 		_leave(false)
 
 
-func _on_exit_action(action: StringName) -> void:
-	if action == &"save":
-		_exit_dialog.hide()
-		_leave(true)
 
 
 # --- UI construction ----------------------------------------------------------
@@ -240,12 +239,16 @@ func _build_ui() -> void:
 	bar.add_theme_constant_override("separation", 16)
 	_top_bar.add_child(bar)
 	_title = Label.new()
-	_title.text = "Puzzle Graph · " + Game.title_of(Game.image_id)
+	_title.text = Game.title_of(Game.image_id)
 	_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_title.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	_title.clip_text = true
 	_title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	bar.add_child(_title)
+	_title_gap = Control.new()
+	_title_gap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_title_gap.hide()
+	bar.add_child(_title_gap)
 	_saved_label = Label.new()
 	_saved_label.text = "Saved"
 	_saved_label.add_theme_color_override("font_color", Game.COLOR_ACCENT.lightened(0.3))
@@ -262,7 +265,7 @@ func _build_ui() -> void:
 	_menu.icon = Game.menu_icon
 	_menu.flat = false
 	_menu.disabled = true
-	_menu.custom_minimum_size = Vector2(72, 60)
+	_menu.custom_minimum_size = Vector2(72, 52)
 	_menu.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_menu.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	bar.add_child(_menu)
@@ -340,9 +343,11 @@ func _build_ui() -> void:
 	_exit_dialog.dialog_text = "Your latest progress isn't saved. Are you sure you want to leave?"
 	_exit_dialog.dialog_autowrap = true
 	_exit_dialog.ok_button_text = "Leave"
-	_exit_dialog.add_button("Save & Leave", false, "save")
 	_exit_dialog.confirmed.connect(_leave.bind(false))
-	_exit_dialog.custom_action.connect(_on_exit_action)
+	# No title-bar close button; Cancel is the way out.
+	var no_icon := ImageTexture.create_from_image(Image.create_empty(1, 1, false, Image.FORMAT_RGBA8))
+	_exit_dialog.add_theme_icon_override("close", no_icon)
+	_exit_dialog.add_theme_icon_override("close_pressed", no_icon)
 	add_child(_exit_dialog)
 
 	_sound = AudioStreamPlayer.new()
@@ -405,15 +410,30 @@ func _layout() -> void:
 	var key := "landscape" if landscape else "portrait"
 	_tray_ratio = float(Game.get_setting("tray_ratio_" + key, DEFAULT_TRAY_RATIO[key]))
 	var safe := _safe_insets()
-	_top_style.content_margin_top = safe.x
-	_top_bar.custom_minimum_size.y = TOP_BAR_H + safe.x
+	var hole := Game.top_cutout(get_viewport())
+	var centred := hole.has_area() and hole.position.x > size.x * 0.25 and hole.end.x < size.x * 0.75
+	if centred:
+		# Share the row with a centred camera hole: title to its left, timer and
+		# menu to its right, instead of pushing the whole bar below it.
+		_top_style.content_margin_top = 0
+		_top_h = maxf(TOP_BAR_H, hole.end.y + 4.0)
+		_title.size_flags_horizontal = Control.SIZE_FILL
+		_title.custom_minimum_size.x = maxf(0.0, hole.position.x - _top_style.content_margin_left - 12.0)
+		_title_gap.show()
+	else:
+		_top_style.content_margin_top = safe.x
+		_top_h = TOP_BAR_H + safe.x
+		_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		_title.custom_minimum_size.x = 0
+		_title_gap.hide()
+	_top_bar.custom_minimum_size.y = _top_h
 	_bottom_pad.custom_minimum_size.y = safe.y
 	_apply_tray_ratio(_tray_ratio)
 
 
 func _available_height() -> float:
 	var safe := _safe_insets()
-	return size.y - TOP_BAR_H - safe.x - DIVIDER_H - safe.y
+	return size.y - _top_h - DIVIDER_H - safe.y
 
 
 func _apply_tray_ratio(ratio: float) -> void:
@@ -423,14 +443,7 @@ func _apply_tray_ratio(ratio: float) -> void:
 
 ## Top and bottom safe-area insets (notch, gesture bar) in viewport units.
 func _safe_insets() -> Vector2:
-	if not OS.has_feature("mobile"):
-		return Vector2.ZERO
-	var safe := DisplayServer.get_display_safe_area()
-	var win := DisplayServer.window_get_size()
-	if win.y <= 0:
-		return Vector2.ZERO
-	var k := get_viewport_rect().size.y / win.y
-	return Vector2(maxf(0.0, safe.position.y), maxf(0.0, win.y - safe.end.y)) * k
+	return Game.safe_insets(get_viewport())
 
 
 # --- Input --------------------------------------------------------------------
