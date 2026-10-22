@@ -166,6 +166,7 @@ The board still sits on top and the tray at the bottom. The tray shrinks to abou
 |------|----------|
 | **Hint** | Picks a random unplaced piece. That piece is **highlighted** with a pulsing glow outline: in the tray, the tray scrolls to it, and on the board, the view pans to it. At the same moment, its **target location on the board is highlighted** with a pulsing outline of the piece's shape. If the target is off-screen, the board pans and zooms to show it. The highlight lasts 4 seconds or until the player touches the piece. The hint count is shown on the completion screen. |
 | **Save Puzzle** | Saves the current state right away (see §8) and confirms with a toast: "Puzzle saved". |
+| **Exit to Main Menu** | Returns to the Home screen. If everything is saved, it leaves right away. If there are changes since the last save (manual or auto), a dialog asks: "Your latest progress isn't saved. Are you sure you want to leave?" with **Save & Leave**, **Leave** (discard changes since the last save) and **Cancel**. |
 | **Reset Puzzle** | Shows a confirmation dialog: "Reset puzzle? All progress will be lost." On confirm, every piece goes back to the tray in a new shuffled order, the timer and hint count go back to zero, and the saved game is deleted. The cut seed stays the same, so the shapes don't change. |
 
 ---

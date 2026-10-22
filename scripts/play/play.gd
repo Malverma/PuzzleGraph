@@ -7,7 +7,7 @@ const Tray := preload("res://scripts/play/tray.gd")
 const DragOverlay := preload("res://scripts/play/drag_overlay.gd")
 
 enum Mode { NONE, PIECE_DRAG, PAN, PINCH, TRAY_PENDING, TRAY_SCROLL, DIVIDER, MINIMAP }
-enum MenuItem { HINT, SAVE, RESET }
+enum MenuItem { HINT, SAVE, RESET, EXIT }
 
 const TOP_BAR_H := 76.0
 const DIVIDER_H := 52.0
@@ -33,6 +33,8 @@ var running := false
 var paused := false
 var completed := false
 var menu_open := false
+## True when the puzzle has changed since the last successful save.
+var unsaved := false
 
 var board: Board
 var tray: Tray
@@ -77,6 +79,7 @@ var _toast: Label
 var _loading: Control
 var _progress: ProgressBar
 var _reset_dialog: ConfirmationDialog
+var _exit_dialog: ConfirmationDialog
 var _sound: AudioStreamPlayer
 
 
@@ -187,12 +190,28 @@ func _unhandled_input(event: InputEvent) -> void:
 		_leave()
 
 
-func _leave() -> void:
+func _leave(save := true) -> void:
 	_finish_drag()
-	if running:
+	if running and save:
 		save_game(false)
 	running = false
 	Game.go(Game.SCENE_HOME)
+
+
+## Menu "Exit to Main Menu": leaves directly when everything is saved,
+## otherwise asks first.
+func _request_exit() -> void:
+	_finish_drag()
+	if unsaved:
+		_exit_dialog.popup_centered(Vector2i(600, 0))
+	else:
+		_leave(false)
+
+
+func _on_exit_action(action: StringName) -> void:
+	if action == &"save":
+		_exit_dialog.hide()
+		_leave(true)
 
 
 # --- UI construction ----------------------------------------------------------
@@ -252,6 +271,8 @@ func _build_ui() -> void:
 	popup.add_item("Save Puzzle", MenuItem.SAVE)
 	popup.add_separator()
 	popup.add_item("Reset Puzzle", MenuItem.RESET)
+	popup.add_separator()
+	popup.add_item("Exit to Main Menu", MenuItem.EXIT)
 	popup.id_pressed.connect(_on_menu)
 	popup.about_to_popup.connect(func() -> void: menu_open = true)
 	popup.popup_hide.connect(func() -> void: menu_open = false)
@@ -312,6 +333,16 @@ func _build_ui() -> void:
 	_reset_dialog.ok_button_text = "Reset"
 	_reset_dialog.confirmed.connect(_do_reset)
 	add_child(_reset_dialog)
+
+	_exit_dialog = ConfirmationDialog.new()
+	_exit_dialog.title = "Leave Puzzle"
+	_exit_dialog.dialog_text = "Your latest progress isn't saved. Are you sure you want to leave?"
+	_exit_dialog.dialog_autowrap = true
+	_exit_dialog.ok_button_text = "Leave"
+	_exit_dialog.add_button("Save & Leave", false, "save")
+	_exit_dialog.confirmed.connect(_leave.bind(false))
+	_exit_dialog.custom_action.connect(_on_exit_action)
+	add_child(_exit_dialog)
 
 	_sound = AudioStreamPlayer.new()
 	_sound.stream = Game.snap_sound
@@ -390,7 +421,7 @@ func _safe_insets() -> Vector2:
 # --- Input --------------------------------------------------------------------
 
 func _blocked() -> bool:
-	return not running or completed or menu_open or _reset_dialog.visible
+	return not running or completed or menu_open or _reset_dialog.visible or _exit_dialog.visible
 
 
 func _input(event: InputEvent) -> void:
@@ -599,6 +630,7 @@ func _drop_piece(finger: Vector2) -> void:
 			_on_snap()
 		else:
 			model.put_on_board(id, board.clamp_to_workspace(wp))
+	unsaved = true
 	board.refresh()
 	_update_counts()
 	if model.is_complete():
@@ -650,6 +682,8 @@ func _on_menu(id: int) -> void:
 			save_game(true)
 		MenuItem.RESET:
 			_reset_dialog.popup_centered(Vector2i(560, 0))
+		MenuItem.EXIT:
+			_request_exit()
 
 
 func give_hint() -> void:
@@ -658,6 +692,7 @@ func give_hint() -> void:
 		return
 	var id: int = options.pick_random()
 	hints_used += 1
+	unsaved = true
 	board.set_hint(id)
 	tray.set_hint(id)
 	_hint_left = HINT_SECONDS
@@ -682,6 +717,7 @@ func _do_reset() -> void:
 	elapsed = 0.0
 	hints_used = 0
 	_save_pending = false
+	unsaved = true
 	Game.delete_save(Game.image_id)
 	board.reset_view()
 	board.refresh()
@@ -721,6 +757,8 @@ func save_game(manual: bool) -> void:
 	if _drag_id >= 0:
 		_finish_drag()
 	var ok := Game.write_save(Game.image_id, save_data())
+	if ok:
+		unsaved = false
 	if manual:
 		_show_toast("Puzzle saved" if ok else "Could not save puzzle")
 	elif ok:
