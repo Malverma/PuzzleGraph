@@ -12,6 +12,8 @@ var puzzle_size := Vector2.ZERO
 var cell := Vector2.ZERO
 ## Correct ("home") position of each piece: the centre of its grid cell.
 var centers := PackedVector2Array()
+## 1 for pieces on the outer edge of the puzzle.
+var border := PackedByteArray()
 ## Outlines relative to the piece centre.
 var outlines: Array[PackedVector2Array] = []
 ## Same as `outlines` with the first point repeated, for draw_polyline().
@@ -29,12 +31,13 @@ var progress := 0.0
 func compute(grid: Vector2i, size: Vector2, style: int, seed_value: int) -> void:
 	cols = grid.x
 	rows = grid.y
-	count = cols * rows
 	puzzle_size = size
 	cell = Vector2(size.x / cols, size.y / rows)
 	var data := CutGenerator.generate(cols, rows, size, style, seed_value)
 	progress = 0.3
 	centers = data.centers
+	border = data.border
+	count = centers.size()
 	var abs_outlines: Array[PackedVector2Array] = data.outlines
 	for i in count:
 		var src := abs_outlines[i]

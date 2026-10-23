@@ -7,8 +7,8 @@ func _initialize() -> void:
 	var size := Vector2(4000, 3000)
 	var failures := 0
 	for target in [64, 128, 256, 512, 1024]:
-		var grid := CutGenerator.grid_for(target, size.x / size.y)
-		for style in [CutGenerator.Style.RIBBON, CutGenerator.Style.RANDOM]:
+		for style in CutGenerator.STYLE_KEYS.size():
+			var grid := CutGenerator.layout_for(target, size.x / size.y, style)
 			for seed_value in [1, 42, 977, 123456]:
 				var t0 := Time.get_ticks_msec()
 				var set := PieceSet.new()
@@ -22,10 +22,13 @@ func _initialize() -> void:
 						bad += 1
 					area += absf(_area(poly))
 				var area_err := absf(area - size.x * size.y) / (size.x * size.y)
-				if bad > 0 or area_err > 1e-6:
+				var borders := 0
+				for i in set.count:
+					borders += set.border[i]
+				if bad > 0 or area_err > 1e-6 or set.count != CutGenerator.piece_count(grid, style) or borders == 0:
 					failures += 1
-				print("%4d -> %2dx%2d=%4d  %-10s seed=%-6d  %4d ms  bad=%d  area_err=%.7f" % [
-					target, grid.x, grid.y, set.count, CutGenerator.STYLE_NAMES[style], seed_value, ms, bad, area_err])
+				print("%4d -> %2dx%2d=%4d  %-11s seed=%-6d  %4d ms  bad=%d  area_err=%.7f  border=%d" % [
+					target, grid.x, grid.y, set.count, CutGenerator.STYLE_NAMES[style], seed_value, ms, bad, area_err, borders])
 	print("FAILURES: %d" % failures)
 	quit(1 if failures > 0 else 0)
 

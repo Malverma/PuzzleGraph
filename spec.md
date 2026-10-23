@@ -100,12 +100,14 @@ This means the grid adapts automatically if an image with another aspect ratio i
 
 ## 5. Cut Styles
 
-There are two cut styles in v1. Both are generated procedurally from a **seed**, so a saved puzzle can be rebuilt with identical shapes.
+There are four cut styles. All are generated procedurally from a **seed**, so a saved puzzle can be rebuilt with identical shapes.
 
 | Style | Description |
 |-------|-------------|
 | **Ribbon Cut** | A regular grid using the `cols × rows` layout from §4. Every interior edge gets a rounded knob (tab) on one side and a matching socket (blank) on the other. Pieces alternate in a checkerboard between two types: type A has tabs left and right and blanks top and bottom, and type B is the reverse. This gives the uniform ribbon look of commercial ribbon-cut puzzles. Knobs are Bézier curves with only small random changes in size and offset, so pieces look consistent but not identical. |
 | **Random Cut** | Irregular pieces. Start from the `cols × rows` grid of §4 and move every interior grid corner by up to ±12% of a cell, so piece sizes and edge angles vary. Each interior edge gets a slight random bow, a knob with random direction, size (±15%) and position along the edge (±7%). Piece count is the same as Ribbon Cut. A repair pass re-cuts any piece whose knobs would collide, using smaller, centred knobs. |
+| **Octagon Cut** | A grid of octagons with small diamond pieces in the gaps between their corners (`c×r` octagons plus `(c−1)(r−1)` diamonds; the frame pieces are cut flat by the border). The layout picks the `c × r` closest to the requested count with cells stretched no more than 0.8–1.25. Every shared edge gets a knob; diamonds mostly receive sockets so they lock into the octagons around them, and long octagon edges sometimes get two knobs. |
+| **Wavy Cut** | Organic, irregular pieces. Seeds are placed on the §4 grid and jittered ±30% of a cell, and the cells are their Voronoi regions clipped to the image. Every shared edge meanders (low-frequency waves) and carries 0–3 knobs, so pieces vary in shape and in the number of neighbours. |
 
 **Generation requirements**
 - Every interior edge is shared by exactly two pieces, and both pieces use the same curve with opposite orientation, so neighbors fit perfectly.
@@ -162,7 +164,7 @@ The board still sits on top and the tray at the bottom. The tray shrinks to abou
 - Holds every piece that hasn't been placed on the board yet. At the start, all pieces are in the tray in shuffled order.
 - Pieces appear at a uniform thumbnail size in a grid that scrolls sideways. Only visible pieces are drawn.
 - The tray's header bar shows a counter for how many pieces are left. Two buttons sit on its right:
-  - **Sort Edges** moves edge pieces to the front of the tray in this order: the top row (left to right), the left column (top to bottom), the right column (top to bottom), then the bottom row (left to right). Interior pieces follow in their current order.
+  - **Sort Edges** moves edge pieces to the front of the tray in a random order, so they are grouped without revealing where each one goes. Interior pieces follow in their current order.
   - **Scramble** shuffles the tray into a new random order.
 
   Both scroll the tray back to the start and count as an unsaved change.
@@ -298,7 +300,7 @@ Build with `godot --headless --export-debug "<preset name>"`, or `--export-relea
 ---
 
 ## 11. Future Considerations (Post-v1)
-- More cut styles: classic jigsaw, square (no knobs), whimsy pieces.
+- More cut styles: square (no knobs), whimsy pieces.
 - Piece rotation mode (90° steps) as a difficulty option.
 - Neighbor joining: pieces that fit together off-target move as a group.
 - Tray filters: edge pieces only, sort by color.
@@ -309,7 +311,7 @@ Build with `godot --headless --export-debug "<preset name>"`, or `--export-relea
 
 ## 12. Acceptance Criteria
 
-1. All 5 bundled images can be started with every piece-count option and both cut styles.
+1. All 5 bundled images can be started with every piece-count option and all four cut styles.
 2. Neighboring pieces fit together exactly, with no gaps or overlaps, in both styles.
 3. The board is on top and the tray is at the bottom in both portrait and landscape. Rotating the device mid-game loses no state.
 4. Pinch zoom (1×–8×), pan, and double-tap zoom work, and pieces can be dragged and snapped while zoomed in. The minimap appears above 1.5× zoom and moves the viewport when tapped.
