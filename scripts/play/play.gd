@@ -24,9 +24,9 @@ const SNAP_TOLERANCE := 0.25
 const AUTOSAVE_SECONDS := 60.0
 const SNAP_SAVE_MS := 5000
 const HINT_SECONDS := 4.0
-const TRAY_RATIO_MIN := 0.15
+const TRAY_RATIO_MIN := 0.12
 const TRAY_RATIO_MAX := 0.5
-const DEFAULT_TRAY_RATIO := { "portrait": 0.35, "landscape": 0.25 }
+const DEFAULT_TRAY_RATIO := { "portrait": 0.35, "landscape": 0.18 }
 
 var pieces: PieceSet
 var model: PuzzleModel
@@ -877,8 +877,13 @@ func dominant_color(id: int) -> int:
 
 
 func _open_folder(f: int) -> void:
-	_folder_window.open(f)
+	_folder_window.open(f, func() -> Rect2: return _folder_screen_rect(_folder_window.folder))
 	Game.vibrate(10)
+
+
+func _folder_screen_rect(f: int) -> Rect2:
+	var r := board.folder_rect(f)
+	return Rect2(board.global_position + board.world_to_screen(r.position), r.size * board.view_scale())
 
 
 func _close_folder() -> void:

@@ -5,17 +5,25 @@ extends Control
 ## Camera frames arrive as an RGB texture or as separate Y and CbCr textures;
 ## a shader converts and rotates them into a SubViewport at the feed's
 ## resolution, which is both the preview and what the shutter captures.
+## The feed's data type and rotation are re-read every frame: on Android the
+## rotation is only known once frames arrive, and it changes with the screen.
 
 const SHADER := """
 shader_type canvas_item;
 uniform sampler2D y_tex : filter_linear;
 uniform sampler2D cbcr_tex : filter_linear;
 uniform bool rgb = false;
-uniform vec2 tx = vec2(1.0, 0.0);
-uniform vec2 ty = vec2(0.0, 1.0);
-uniform vec2 to = vec2(0.0, 0.0);
+// Clockwise quarter turns needed to show the camera image upright.
+uniform int quarter = 0;
 void fragment() {
-	vec2 uv = tx * UV.x + ty * UV.y + to;
+	vec2 uv = UV;
+	if (quarter == 1) {
+		uv = vec2(UV.y, 1.0 - UV.x);
+	} else if (quarter == 2) {
+		uv = vec2(1.0) - UV;
+	} else if (quarter == 3) {
+		uv = vec2(1.0 - UV.y, UV.x);
+	}
 	vec3 c;
 	if (rgb) {
 		c = texture(y_tex, uv).rgb;
@@ -186,15 +194,17 @@ func _pick_feed() -> CameraFeed:
 	return feeds[0] if not feeds.is_empty() else null
 
 
-## Picks the largest format at or below MAX_PIXELS, preferring RGBA ones:
-## on Android, Godot hands YUV_420_888 frames over as a single-channel texture.
+## Picks the largest format at or below MAX_PIXELS, preferring YUV_420_888:
+## Godot's Android camera handles its row padding properly and hands it over
+## as Y + CbCr textures, while its RGBA path ignores row padding, which breaks
+## the picture on many phones.
 func _choose_format() -> void:
 	var best := -1
 	var best_score := 0
 	for i in _feed.formats.size():
 		var f: Dictionary = _feed.formats[i]
 		var px := int(f.get("width", 0)) * int(f.get("height", 0))
-		var score := px + (1 << 30 if String(f.get("format", "")).begins_with("RGB") else 0)
+		var score := px + (1 << 30 if String(f.get("format", "")) == "YUV_420_888" else 0)
 		if px <= MAX_PIXELS and score > best_score:
 			best = i
 			best_score = score
@@ -232,39 +242,43 @@ func _bind_feed() -> void:
 	var cbcr := CameraTexture.new()
 	cbcr.camera_feed_id = _feed.get_id()
 	cbcr.which_feed = CameraServer.FEED_CBCR_IMAGE
-	var rgb := _feed.get_datatype() == CameraFeed.FEED_RGB
 	_material.set_shader_parameter("y_tex", main)
 	_material.set_shader_parameter("cbcr_tex", cbcr)
-	_material.set_shader_parameter("rgb", rgb)
-	var t := _feed.feed_transform
-	_material.set_shader_parameter("tx", t.x)
-	_material.set_shader_parameter("ty", t.y)
-	_material.set_shader_parameter("to", t.origin)
 	_main_tex = main
-	var feed_size := Vector2(main.get_width(), main.get_height())
-	if feed_size.x < 2.0:
-		feed_size = Vector2(1280, 960)
-	# A quarter turn in the transform swaps the output's width and height.
-	if absf(t.x.y) > absf(t.x.x):
-		feed_size = Vector2(feed_size.y, feed_size.x)
-	_set_capture_size(Vector2i(feed_size))
+	_set_capture_size(Vector2i(1280, 960))
+	_update_feed()
 	_viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	_preview.texture = _viewport.get_texture()
 
 
-## The camera texture reports its size only once frames arrive; match the
-## capture viewport to it.
 func _process(_delta: float) -> void:
-	if _main_tex == null or _viewport.render_target_update_mode != SubViewport.UPDATE_ALWAYS:
-		return
+	if _main_tex and _viewport.render_target_update_mode == SubViewport.UPDATE_ALWAYS:
+		_update_feed()
+
+
+## Follows the feed's data type, rotation and frame size, which are only known
+## once frames arrive and change when the screen rotates.
+func _update_feed() -> void:
+	_material.set_shader_parameter("rgb", _feed.get_datatype() == CameraFeed.FEED_RGB)
+	var q := _quarter_turns()
+	_material.set_shader_parameter("quarter", q)
 	var sz := Vector2i(_main_tex.get_width(), _main_tex.get_height())
 	if sz.x < 2:
 		return
-	var t := _feed.feed_transform
-	if absf(t.x.y) > absf(t.x.x):
+	if q % 2 == 1:
 		sz = Vector2i(sz.y, sz.x)
 	if _viewport.size != sz:
 		_set_capture_size(sz)
+
+
+## Clockwise quarter turns from the feed transform. On Android it is a pure
+## rotation by (sensor orientation - screen rotation); before the first frame it
+## is still the default vertical flip, which Android frames don't need.
+func _quarter_turns() -> int:
+	var t := _feed.feed_transform
+	if t.determinant() < 0.0:
+		return 0
+	return posmod(roundi(rad_to_deg(t.get_rotation()) / 90.0), 4)
 
 
 func _set_capture_size(sz: Vector2i) -> void:
