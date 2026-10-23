@@ -1,5 +1,6 @@
 extends Control
-## Puzzle setup: choose piece count and cut style, then start (or continue a save).
+## Puzzle setup: choose piece count and cut style, then start. Starting over an
+## image that has a save asks before overwriting it.
 
 const CutPreview := preload("res://scripts/ui/cut_preview.gd")
 
@@ -126,20 +127,11 @@ func _ready() -> void:
 	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	options.add_child(spacer)
 
-	if _has_save:
-		var data := Game.read_save(Game.image_id)
-		var cont := Button.new()
-		cont.text = "Continue · %d%%  (%d pcs, %s)" % [Game.save_progress(Game.image_id), int(data.get("total", 0)),
-				CutGenerator.STYLE_NAMES[CutGenerator.style_from_key(String(data.get("cutStyle", "RIBBON")))]]
-		cont.custom_minimum_size.y = 84
-		Game.make_accent(cont)
-		cont.pressed.connect(_continue)
-		options.add_child(cont)
+	# Saved puzzles are continued from Home, so Setup only starts new ones.
 	var start := Button.new()
 	start.text = "Start New" if _has_save else "Start"
 	start.custom_minimum_size.y = 84
-	if not _has_save:
-		Game.make_accent(start)
+	Game.make_accent(start)
 	start.pressed.connect(_start)
 	options.add_child(start)
 
@@ -197,11 +189,6 @@ func _launch_new() -> void:
 	Game.delete_save(Game.image_id)
 	Game.new_puzzle(_target, _style)
 	Game.go(Game.SCENE_PLAY)
-
-
-func _continue() -> void:
-	if Game.resume_saved():
-		Game.go(Game.SCENE_PLAY)
 
 
 func _back() -> void:

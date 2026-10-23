@@ -65,6 +65,8 @@ func _draw() -> void:
 	var dot := maxf(2.0, ps.cell.x * s * 0.5)
 	for id in model.loose:
 		draw_rect(Rect2(origin + model.pos[id] * s - Vector2(dot, dot) * 0.5, Vector2(dot, dot)), Color(1, 1, 1, 0.7))
+	for f in model.folders:
+		draw_rect(Rect2(origin + f.pos * s - Vector2(dot, dot), Vector2(dot, dot) * 2.0), Color(Game.COLOR_HINT, 0.85))
 	draw_rect(Rect2(Vector2.ZERO, size), Color(1, 1, 1, 0.35), false, 1.0)
 
 

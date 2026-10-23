@@ -1,9 +1,7 @@
 {
 	"images": [
-		{ "id": "img_01", "title": "Placeholder 1", "image": "res://puzzles/img_01.webp", "thumb": "res://puzzles/img_01_thumb.webp" },
-		{ "id": "img_02", "title": "Placeholder 2", "image": "res://puzzles/img_02.webp", "thumb": "res://puzzles/img_02_thumb.webp" },
-		{ "id": "img_03", "title": "Placeholder 3", "image": "res://puzzles/img_03.webp", "thumb": "res://puzzles/img_03_thumb.webp" },
-		{ "id": "img_04", "title": "Placeholder 4", "image": "res://puzzles/img_04.webp", "thumb": "res://puzzles/img_04_thumb.webp" },
-		{ "id": "img_05", "title": "Placeholder 5", "image": "res://puzzles/img_05.webp", "thumb": "res://puzzles/img_05_thumb.webp" }
+		{ "id": "default_1", "title": "Old Town Balconies", "image": "res://puzzles/default_1.webp", "thumb": "res://puzzles/default_1_thumb.webp" },
+		{ "id": "default_2", "title": "Aquarium Tunnel", "image": "res://puzzles/default_2.webp", "thumb": "res://puzzles/default_2_thumb.webp" },
+		{ "id": "default_3", "title": "City Lights", "image": "res://puzzles/default_3.webp", "thumb": "res://puzzles/default_3_thumb.webp" }
 	]
 }

@@ -1,6 +1,6 @@
 extends Node2D
 ## Pulsing highlight of the hinted piece's target spot (and the piece itself
-## when it is loose on the board).
+## when it is loose on the board, or its folder).
 
 var board: Control
 
@@ -29,4 +29,10 @@ func _draw() -> void:
 	if model.state[id] == PuzzleModel.ON_BOARD:
 		draw_set_transform(model.pos[id])
 		draw_polyline(ps.closed_outlines[id], Color(gold, 0.5 + 0.5 * pulse), width * 1.6)
+	elif model.state[id] == PuzzleModel.IN_FOLDER:
+		var f := model.folder_of(id)
+		if f >= 0:
+			var r: Rect2 = board.folder_rect(f)
+			draw_set_transform(Vector2.ZERO)
+			draw_arc(r.get_center(), r.size.x * 0.58, 0.0, TAU, 48, Color(gold, 0.5 + 0.5 * pulse), width * 1.6)
 	draw_set_transform(Vector2.ZERO)

@@ -1,16 +1,22 @@
 extends Control
 ## Create Puzzle: pick an image from the device, a default background, or one
-## of the player's earlier images, then continue to Setup.
+## of the player's earlier images, then continue to Setup. Holding one of the
+## player's images lifts it so it can be dragged to a new spot, or onto the
+## trash can to delete it along with any save made from it.
 
 const Cards := preload("res://scripts/ui/cards.gd")
+const CardSorter := preload("res://scripts/ui/card_sorter.gd")
 const GAP := 20
 const FILTERS := ["*.png, *.jpg, *.jpeg, *.webp ; Images ; image/png, image/jpeg, image/webp"]
 
 var _margin: MarginContainer
+var _scroll: ScrollContainer
 var _grids: Array[GridContainer] = []
 var _cards: Array[Button] = []
 var _status: Label
 var _file_dialog: FileDialog
+var _mine: VBoxContainer
+var _sorter: CardSorter
 
 
 func _ready() -> void:
@@ -19,13 +25,13 @@ func _ready() -> void:
 	_margin = MarginContainer.new()
 	_margin.set_anchors_preset(Control.PRESET_FULL_RECT)
 	add_child(_margin)
-	var scroll := ScrollContainer.new()
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	_margin.add_child(scroll)
+	_scroll = ScrollContainer.new()
+	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_margin.add_child(_scroll)
 	var col := VBoxContainer.new()
 	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	col.add_theme_constant_override("separation", 16)
-	scroll.add_child(col)
+	_scroll.add_child(col)
 
 	var header := HBoxContainer.new()
 	header.add_theme_constant_override("separation", 20)
@@ -59,27 +65,44 @@ func _ready() -> void:
 	_add_section(col, "Default Backgrounds", Game.catalog.filter(func(e: Dictionary) -> bool: return not e.get("user", false)))
 	var mine := Game.catalog.filter(func(e: Dictionary) -> bool: return e.get("user", false))
 	if not mine.is_empty():
-		_add_section(col, "Your Images", mine)
+		_mine = _add_section(col, "Your Images", mine)
+		var layer := Control.new()
+		layer.set_anchors_preset(Control.PRESET_FULL_RECT)
+		layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		add_child(layer)
+		_sorter = CardSorter.new(_scroll, _mine.get_child(1), layer, func(c: Button) -> Button:
+			return Cards.image_card(c.get_meta("id")))
+		_sorter.reordered.connect(_save_order)
+		_sorter.deleted.connect(_on_deleted)
+		add_child(_sorter)
 	resized.connect(_layout)
 	_layout()
 
 
-func _add_section(col: VBoxContainer, heading: String, entries: Array) -> void:
-	col.add_child(Cards.divider(heading))
+## A divider and a grid of image cards. Returns the section; the grid is its second child.
+func _add_section(col: VBoxContainer, heading: String, entries: Array) -> VBoxContainer:
+	var section := VBoxContainer.new()
+	section.add_theme_constant_override("separation", 16)
+	col.add_child(section)
+	section.add_child(Cards.divider(heading))
 	var grid := GridContainer.new()
 	grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	grid.add_theme_constant_override("h_separation", GAP)
 	grid.add_theme_constant_override("v_separation", GAP)
-	col.add_child(grid)
+	section.add_child(grid)
 	_grids.append(grid)
 	for e in entries:
 		var card := Cards.image_card(e.id)
+		card.set_meta("id", e.id)
 		card.pressed.connect(_choose.bind(String(e.id)))
 		grid.add_child(card)
 		_cards.append(card)
+	return section
 
 
 func _choose(id: String) -> void:
+	if _sorter and _sorter.blocks_press():
+		return
 	Game.image_id = id
 	Game.setup_back = Game.SCENE_CREATE
 	Game.go(Game.SCENE_SETUP)
@@ -143,6 +166,22 @@ func _layout() -> void:
 	var card_w := (width - GAP * (columns - 1)) / columns
 	for card in _cards:
 		card.custom_minimum_size = Vector2(0, card_w * 0.75 + 64.0)
+	if _sorter:
+		var bottom := Game.safe_insets(get_viewport()).y
+		_sorter.place_trash(size - Vector2(pad, pad + bottom))
+
+
+func _on_deleted(card: Button) -> void:
+	Game.delete_user_image(String(card.get_meta("id")))
+	_cards.erase(card)
+	_mine.visible = _mine.get_child(1).get_child_count() > 0
+
+
+func _save_order() -> void:
+	var ids: Array[String] = []
+	for c in _mine.get_child(1).get_children():
+		ids.append(String(c.get_meta("id")))
+	Game.set_image_order(ids)
 
 
 func _back() -> void:

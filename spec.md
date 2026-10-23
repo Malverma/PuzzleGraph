@@ -42,14 +42,17 @@ Home / Play
    - Two cards side by side, the same size as the puzzle cards:
      - **Take Photo** (left) opens the camera.
      - **Create Puzzle** (right) opens a picker with **Choose Image from Device** (the system file picker; PNG, JPEG or WebP), the 5 default backgrounds, and any images the player added earlier.
-   - A **Saved Puzzles** divider follows. Under it are cards for every puzzle with a save, newest first, each showing its progress %. Tapping one continues it directly.
+   - A **Saved Puzzles** divider (a full-width carved groove) follows. Under it are cards for every puzzle with a save, each showing its progress %. Tapping one continues it directly.
+   - Holding a saved card (350 ms) lifts it: it floats under the finger and the other cards shift to show where it will land; dragging near the top or bottom edge scrolls. The arrangement is kept in settings (`saved_order`); puzzles saved for the first time appear at the top, newest first.
+   - While a card is held, a pixel-art trash can appears in the bottom-right corner. Dropping the card on it deletes that puzzle's save (the image itself stays in Create Puzzle).
 1a. **Take Photo:**
    - A live viewfinder from the back camera with a **Take Photo** shutter, then **Retake** or **Use Photo**.
    - The app asks for the camera permission the first time.
 1b. **Player images:**
    - Photos and picked files are copied into `user://photos/` as `<id>.jpg` (longest side up to 4096 px), with a 512 px thumbnail and a small JSON (title, created time).
    - They work like bundled images: setup, saves and the Create picker under "Your Images".
-2. **Puzzle Setup:** choose the piece count and cut style, then tap **Start**.
+   - Under "Your Images" the cards can be held and dragged the same way as saved puzzles on Home. The order is kept in settings (`image_order`), with new images at the top. Dropping one on the trash can deletes the image and any save made from it.
+2. **Puzzle Setup:** choose the piece count and cut style, then tap **Start**. Setup has no Continue button (saved puzzles are continued from Home). If the image already has a save, the button reads **Start New** and asks before overwriting it.
 3. **Play Screen:** the board on top, the tray on the bottom, and the menu button in the top-right corner. The Android Back button auto-saves and returns to Home.
 4. **Completion:** when the last piece is placed, play a celebration animation and show the elapsed time, the number of hints used, and the options **Play Again** and **Choose Another Image**.
 
@@ -57,23 +60,21 @@ Home / Play
 
 ## 3. Bundled Images
 
-| ID | Asset | Notes |
+| ID | Asset | Title |
 |----|-------|-------|
-| `img_01` | `puzzles/img_01.webp` | Placeholder; final art TBD |
-| `img_02` | `puzzles/img_02.webp` | |
-| `img_03` | `puzzles/img_03.webp` | |
-| `img_04` | `puzzles/img_04.webp` | |
-| `img_05` | `puzzles/img_05.webp` | |
+| `default_1` | `puzzles/default_1.webp` | Old Town Balconies (1600 × 1200) |
+| `default_2` | `puzzles/default_2.webp` | Aquarium Tunnel (4096 × 3072) |
+| `default_3` | `puzzles/default_3.webp` | City Lights (4096 × 3072) |
 
 **Requirements**
-- Source resolution of at least **4096 × 3072** (4:3) so pieces stay sharp at ~1024 pieces and when zoomed in.
+- Source resolution of at least **4096 × 3072** so pieces stay sharp at ~1024 pieces and when zoomed in.
 - WebP format, lossy quality of about 90, to keep the APK small.
-- All 5 images use a 4:3 landscape aspect ratio so the grid math is consistent.
+- Any landscape aspect ratio works: the grid is chosen from the image's aspect. The thumbnail must have the same aspect as its image.
 - Each image ships with a thumbnail (about 512 px) for the selection screen.
 - At load time, the source is downsampled to fit the device's memory budget (see §9).
 
 **Asset contract** (for whoever produces the final art):
-- Put the files in `puzzles/` as `img_0N.webp` plus `img_0N_thumb.webp`. Replacing the placeholders with the same names needs no code change.
+- Put the files in `puzzles/` as `default_N.webp` plus `default_N_thumb.webp`. Replacing the placeholders with the same names needs no code change.
 - Titles and paths live in `puzzles/catalog.json` (`id`, `title`, `image`, `thumb`). Change the titles there.
 - After adding or replacing files, re-import once by opening the project in the Godot editor or running `godot --headless --import`. Textures import as lossy at 90% quality by default (`[importer_defaults]` in `project.godot`).
 
@@ -171,6 +172,11 @@ The board still sits on top and the tray at the bottom. The tray shrinks to abou
 - **Pick up:** touch and drag. The piece lifts with a slight scale-up (1.05×) and a drop shadow, and comes to the front.
 - **Snap:** when the player drops a piece within a **snap tolerance** of its correct position, it snaps into place. The tolerance is 25% of the piece's width, measured in board coordinates. A snap triggers a short haptic tick and a sound. A placed piece can still be moved. Hold it for about 0.25 s to lift it off again; a quicker drag pans the board. A lifted piece counts as unplaced until it snaps back into place.
 - Only one piece can be dragged at a time.
+- **Folders:** dropping a piece onto a loose piece on the board (not near its home spot, which still snaps) puts both into a folder at that spot. While a piece is dragged over a loose piece or a folder, the target is outlined in gold.
+  - A folder shows the app icon's puzzle piece in one of five colours (red, yellow, green, blue, purple; a 72 px strip in `assets/ui/piece_folders.png`, source `assets/ui/src/piece_folders.pxo`) with a badge counting its pieces. There can be at most 5 folders, one per colour. A new folder takes the art colour the dropped piece shows most (pixels sampled inside its outline, weighted by vividness); if that colour is already used, or the piece is too dark or grey to call, a random unused colour. With 5 folders, dropping a piece on a loose piece just places it there and shows a toast. It is drawn above loose pieces and is never smaller than 150 px on screen.
+  - Dropping a piece onto a folder adds it. Dragging a folder moves it. Dropping a folder on another folder merges them, and dropping it on the tray empties its pieces into the tray.
+  - Tapping a folder opens a window with its pieces in a grid that scrolls vertically. Drag a piece sideways (or hold it) to pull it out; the window closes and the piece follows the finger onto the board or tray. A folder left with one piece turns back into that loose piece. Tapping outside the window, its × button, or Android Back closes it.
+  - Folders are saved: pieces have state `FOLDER` with `folder` / `folderIndex`, and the save has a `folders` list of `{x, y, color}`. Hints on a piece inside a folder ring the folder.
 
 ### 6.5 Top Bar
 - Image name (shortened if long). On phones with a centred camera hole, the bar shares the hole's row: the name sits to the left of the hole, and the timer and menu to its right.
@@ -186,7 +192,7 @@ The game is meant to feel like a puzzle laid out on a wooden table. The art is c
 - **Buttons:**
   - normal buttons are oak with dark "burned" text;
   - selected or pressed buttons are honey wood with a brass rim;
-  - primary actions (Start, Continue) are cherry.
+  - primary actions (Start, Start New) are cherry.
 - **Source art:** the textures were made in Pixelorama and are stored in `assets/ui/`, with editable `.pxo` sources in `assets/ui/src/`. The nine-patch textures are drawn at 48 px, scaled up 2× to 96 px with 24 px borders, and use lossless import. The tiling textures (table, tray, felt) are seamless. They are scaled up 4× with nearest-neighbour filtering and drawn shrunk with mipmaps, so the pixel edges stay crisp.
 
 ---

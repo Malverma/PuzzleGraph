@@ -1,8 +1,10 @@
 extends Control
 ## Home: Take Photo and Create Puzzle cards side by side, then a divider and the
-## saved puzzles (tap one to continue it).
+## saved puzzles (tap one to continue it). Holding a saved puzzle lifts it so
+## it can be dragged to a new spot, or onto the trash can to delete its save.
 
 const Cards := preload("res://scripts/ui/cards.gd")
+const CardSorter := preload("res://scripts/ui/card_sorter.gd")
 const GAP := 20
 const ICON_CAMERA := preload("res://assets/ui/icon_camera.png")
 const ICON_CREATE := preload("res://assets/ui/icon_create.png")
@@ -11,6 +13,9 @@ var _actions: GridContainer
 var _grid: GridContainer
 var _cards: Array[Button] = []
 var _margin: MarginContainer
+var _scroll: ScrollContainer
+var _none: Label
+var _sorter: CardSorter
 
 
 func _ready() -> void:
@@ -20,13 +25,13 @@ func _ready() -> void:
 	_margin = MarginContainer.new()
 	_margin.set_anchors_preset(Control.PRESET_FULL_RECT)
 	add_child(_margin)
-	var scroll := ScrollContainer.new()
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	_margin.add_child(scroll)
+	_scroll = ScrollContainer.new()
+	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_margin.add_child(_scroll)
 	var col := VBoxContainer.new()
 	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	col.add_theme_constant_override("separation", 16)
-	scroll.add_child(col)
+	_scroll.add_child(col)
 
 	var title := Label.new()
 	title.text = "Puzzle Graph"
@@ -43,21 +48,38 @@ func _ready() -> void:
 		_actions.add_child(card)
 		_cards.append(card)
 
+	var gap := Control.new()
+	gap.custom_minimum_size.y = 8
+	col.add_child(gap)
 	col.add_child(Cards.divider("Saved Puzzles"))
 	var saved := Game.saved_ids()
-	if saved.is_empty():
-		var none := Label.new()
-		none.text = "No saved puzzles yet. Start one above."
-		none.add_theme_color_override("font_color", Game.COLOR_TEXT_DIM)
-		none.add_theme_font_size_override("font_size", 24)
-		col.add_child(none)
+	_none = Label.new()
+	_none.text = "No saved puzzles yet. Start one above."
+	_none.add_theme_color_override("font_color", Game.COLOR_TEXT_DIM)
+	_none.add_theme_font_size_override("font_size", 24)
+	_none.visible = saved.is_empty()
+	col.add_child(_none)
 	_grid = _make_grid()
 	col.add_child(_grid)
 	for id in saved:
-		var card := Cards.image_card(id, "%d%%" % Game.save_progress(id))
+		var badge := "%d%%" % Game.save_progress(id)
+		var card := Cards.image_card(id, badge)
+		card.set_meta("id", id)
+		card.set_meta("badge", badge)
 		card.pressed.connect(_continue.bind(id))
 		_grid.add_child(card)
 		_cards.append(card)
+
+	var layer := Control.new()
+	layer.set_anchors_preset(Control.PRESET_FULL_RECT)
+	layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(layer)
+	_sorter = CardSorter.new(_scroll, _grid, layer, func(c: Button) -> Button:
+		return Cards.image_card(c.get_meta("id"), c.get_meta("badge")))
+	_sorter.reordered.connect(_save_order)
+	_sorter.deleted.connect(_on_deleted)
+	add_child(_sorter)
+
 	resized.connect(_layout)
 	_layout()
 
@@ -71,6 +93,8 @@ func _make_grid() -> GridContainer:
 
 
 func _continue(id: String) -> void:
+	if _sorter.blocks_press():
+		return
 	Game.image_id = id
 	if Game.resume_saved():
 		Game.go(Game.SCENE_PLAY)
@@ -92,6 +116,8 @@ func _layout() -> void:
 	var card_w := (width - GAP * (columns - 1)) / columns
 	for card in _cards:
 		card.custom_minimum_size = Vector2(0, card_w * 0.75 + 64.0)
+	var bottom := Game.safe_insets(get_viewport()).y
+	_sorter.place_trash(size - Vector2(pad, pad + bottom))
 
 
 func _safe_top() -> float:
@@ -101,3 +127,16 @@ func _safe_top() -> float:
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_GO_BACK_REQUEST:
 		get_tree().quit()
+
+
+func _on_deleted(card: Button) -> void:
+	Game.delete_save(String(card.get_meta("id")))
+	_cards.erase(card)
+	_none.visible = _grid.get_child_count() == 0
+
+
+func _save_order() -> void:
+	var ids: Array[String] = []
+	for c in _grid.get_children():
+		ids.append(String(c.get_meta("id")))
+	Game.set_saved_order(ids)

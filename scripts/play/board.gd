@@ -9,6 +9,11 @@ const MINIMAP_ZOOM := 1.5
 const BoardWorld := preload("res://scripts/play/board_world.gd")
 const HintLayer := preload("res://scripts/play/hint_layer.gd")
 const Minimap := preload("res://scripts/play/minimap.gd")
+const FolderLayer := preload("res://scripts/play/folder_layer.gd")
+## Folder size as a multiple of the largest piece, but never smaller than
+## FOLDER_MIN_PX on screen so it stays easy to tap.
+const FOLDER_SCALE := 1.6
+const FOLDER_MIN_PX := 150.0
 
 var model: PuzzleModel
 var texture: Texture2D
@@ -19,9 +24,13 @@ var center := Vector2.ZERO
 var workspace := Rect2()
 var hint_id := -1
 var hint_time := 0.0
+## What a dragged piece would drop into: a folder index or a loose piece id (-1 = none).
+var drop_folder := -1
+var drop_piece := -1
 
 var world: Node2D
 var hint_layer: Node2D
+var folder_layer: Node2D
 var minimap: Control
 var _tween: Tween
 var _anim_from := [1.0, Vector2.ZERO]
@@ -35,6 +44,9 @@ func _ready() -> void:
 	world = BoardWorld.new()
 	world.board = self
 	add_child(world)
+	folder_layer = FolderLayer.new()
+	folder_layer.board = self
+	world.add_child(folder_layer)
 	hint_layer = HintLayer.new()
 	hint_layer.board = self
 	world.add_child(hint_layer)
@@ -61,6 +73,7 @@ func _draw() -> void:
 
 func refresh() -> void:
 	world.queue_redraw()
+	folder_layer.queue_redraw()
 	minimap.refresh()
 
 
@@ -75,6 +88,11 @@ func _on_resized() -> void:
 		var p := clamp_to_workspace(model.pos[id])
 		if p != model.pos[id]:
 			model.pos[id] = p
+			changed = true
+	for f in model.folders:
+		var p := clamp_to_workspace(f.pos)
+		if p != f.pos:
+			f.pos = p
 			changed = true
 	_apply()
 	if changed:
@@ -121,6 +139,8 @@ func _apply() -> void:
 			center[axis] = clampf(center[axis], workspace.position[axis] + half[axis], workspace.end[axis] - half[axis])
 	world.scale = Vector2(s, s)
 	world.position = size * 0.5 - center * s
+	if model and not model.folders.is_empty():
+		folder_layer.queue_redraw()
 	minimap.visible = zoom > MINIMAP_ZOOM
 	minimap.update_view()
 	view_changed.emit()
@@ -229,6 +249,41 @@ func piece_at(p: Vector2) -> int:
 			best = id
 			best_d = d
 	return best
+
+
+## Loose piece whose outline contains world point `p` (no finger slack), or -1.
+func piece_under(p: Vector2) -> int:
+	var ps := model.pieces
+	for i in range(model.loose.size() - 1, -1, -1):
+		var id := model.loose[i]
+		if ps.contains(id, p - model.pos[id]):
+			return id
+	return -1
+
+
+func folder_size() -> float:
+	return maxf(model.pieces.max_extent * FOLDER_SCALE, FOLDER_MIN_PX / view_scale())
+
+
+func folder_rect(f: int) -> Rect2:
+	var s := folder_size()
+	return Rect2(model.folders[f].pos - Vector2(s, s) * 0.5, Vector2(s, s))
+
+
+## Topmost folder under world point `p`, or -1. `skip` ignores one folder.
+func folder_at(p: Vector2, skip := -1) -> int:
+	for f in range(model.folders.size() - 1, -1, -1):
+		if f != skip and folder_rect(f).has_point(p):
+			return f
+	return -1
+
+
+func set_drop_target(folder: int, piece: int) -> void:
+	if folder == drop_folder and piece == drop_piece:
+		return
+	drop_folder = folder
+	drop_piece = piece
+	folder_layer.queue_redraw()
 
 
 ## Placed piece under `p` (world), or -1. Loose pieces are checked first by piece_at.

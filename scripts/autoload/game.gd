@@ -62,6 +62,8 @@ var resume: Dictionary = {}
 var setup_back := SCENE_HOME
 
 var _thumbs := {}
+## Small copy (256 px wide) of the last puzzle image loaded, for colour sampling.
+var puzzle_sample: Image
 
 
 func _ready() -> void:
@@ -107,11 +109,51 @@ func _load_user_images() -> void:
 			found.append({ "id": id, "title": String(meta.get("title", "My Image")), "image": image,
 					"thumb": PHOTO_DIR.path_join(id + "_thumb.jpg"), "user": true, "created": int(meta.get("created", 0)) })
 	found.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a.created > b.created)
+	# Images the player arranged on Create keep that order; newer ones come first.
+	var arranged: Array[Dictionary] = []
+	for id in get_setting("image_order", []):
+		for e in found:
+			if e.id == id:
+				arranged.append(e)
+				found.erase(e)
+				break
 	catalog.append_array(found)
+	catalog.append_array(arranged)
 
 
 func is_user_image(id: String) -> bool:
 	return bool(get_entry(id).get("user", false))
+
+
+## Player images in the order given; bundled images stay first.
+func set_image_order(ids: Array[String]) -> void:
+	set_setting("image_order", ids)
+	var bundled := catalog.filter(func(e: Dictionary) -> bool: return not e.get("user", false))
+	var mine := catalog.filter(func(e: Dictionary) -> bool: return e.get("user", false))
+	mine.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return ids.find(a.id) < ids.find(b.id))
+	catalog.assign(bundled + mine)
+
+
+## Deletes a player image, its files and any save made from it.
+func delete_user_image(id: String) -> void:
+	if not is_user_image(id):
+		return
+	delete_save(id)
+	for f in [id + ".jpg", id + "_thumb.jpg", id + ".json"]:
+		var path := PHOTO_DIR.path_join(f)
+		if FileAccess.file_exists(path):
+			DirAccess.remove_absolute(path)
+	for i in catalog.size():
+		if catalog[i].id == id:
+			catalog.remove_at(i)
+			break
+	_thumbs.erase(id)
+	var order: Array = get_setting("image_order", [])
+	if id in order:
+		order.erase(id)
+		set_setting("image_order", order)
+	if image_id == id and not catalog.is_empty():
+		image_id = catalog[0].id
 
 
 ## Saves `img` as a new player image and adds it to the catalog. Returns its id.
@@ -170,7 +212,8 @@ func new_image_title(kind: String) -> String:
 	return "%s · %s %d, %02d:%02d" % [kind, months[int(t.month) - 1], t.day, t.hour, t.minute]
 
 
-## Ids that have a save, most recently saved first.
+## Ids that have a save, in the order the player arranged them on Home.
+## Saves not in that order yet come first, most recently saved first.
 func saved_ids() -> Array[String]:
 	var out: Array[String] = []
 	for e in catalog:
@@ -178,7 +221,18 @@ func saved_ids() -> Array[String]:
 			out.append(e.id)
 	out.sort_custom(func(a: String, b: String) -> bool:
 		return FileAccess.get_modified_time(save_path(a)) > FileAccess.get_modified_time(save_path(b)))
+	var order: Array = get_setting("saved_order", [])
+	var arranged: Array[String] = []
+	for id in order:
+		if id in out:
+			arranged.append(id)
+			out.erase(id)
+	out.append_array(arranged)
 	return out
+
+
+func set_saved_order(ids: Array[String]) -> void:
+	set_setting("saved_order", ids)
 
 
 func get_entry(id: String) -> Dictionary:
@@ -220,6 +274,9 @@ func load_puzzle_texture(id: String) -> Texture2D:
 	if longest > cap:
 		var k := float(cap) / longest
 		img.resize(roundi(img.get_width() * k), roundi(img.get_height() * k), Image.INTERPOLATE_LANCZOS)
+	puzzle_sample = img.duplicate() as Image
+	puzzle_sample.convert(Image.FORMAT_RGB8)
+	puzzle_sample.resize(256, maxi(1, roundi(256.0 * img.get_height() / img.get_width())), Image.INTERPOLATE_BILINEAR)
 	img.generate_mipmaps()
 	return ImageTexture.create_from_image(img)
 
@@ -283,6 +340,10 @@ func write_save(id: String, data: Dictionary) -> bool:
 func delete_save(id: String) -> void:
 	if has_save(id):
 		DirAccess.remove_absolute(save_path(id))
+	var order: Array = get_setting("saved_order", [])
+	if id in order:
+		order.erase(id)
+		set_setting("saved_order", order)
 
 
 ## 0..100, or -1 if there is no save.

@@ -5,8 +5,10 @@ extends Control
 const Board := preload("res://scripts/play/board.gd")
 const Tray := preload("res://scripts/play/tray.gd")
 const DragOverlay := preload("res://scripts/play/drag_overlay.gd")
+const FolderWindow := preload("res://scripts/play/folder_window.gd")
 
-enum Mode { NONE, PIECE_DRAG, PAN, PINCH, TRAY_PENDING, TRAY_SCROLL, DIVIDER, MINIMAP, PLACED_PENDING }
+enum Mode { NONE, PIECE_DRAG, PAN, PINCH, TRAY_PENDING, TRAY_SCROLL, DIVIDER, MINIMAP, PLACED_PENDING,
+		FOLDER_PENDING, FOLDER_DRAG, WINDOW_PENDING, WINDOW_SCROLL }
 enum MenuItem { HINT, SAVE, RESET, EXIT }
 
 const TOP_BAR_H := 60.0
@@ -63,6 +65,12 @@ var _drag_offset := Vector2.ZERO
 var _pending_index := -1
 ## Placed piece under the finger while waiting to see if it is a hold or a pan.
 var _pending_placed := -1
+## Folder being tapped or dragged, and its centre relative to the finger (world units).
+var _drag_folder := -1
+var _folder_grab := Vector2.ZERO
+## Piece slot pressed in the open folder window.
+var _window_index := -1
+var _last_y := 0.0
 var _last_x := 0.0
 var _last_vx := 0.0
 var _last_tap_ms := -100000
@@ -83,6 +91,7 @@ var _count_label: Label
 var _tray_buttons: HBoxContainer
 var _bottom_pad: Control
 var _overlay: DragOverlay
+var _folder_window: FolderWindow
 var _toast: Label
 var _loading: Control
 var _progress: ProgressBar
@@ -126,7 +135,7 @@ func _finish_generation() -> void:
 	Game.resume = {}
 	var resumed := false
 	if not save.is_empty():
-		resumed = model.load_save(save.get("pieces", []))
+		resumed = model.load_save(save.get("pieces", []), save.get("folders", []))
 		if resumed:
 			elapsed = float(save.get("elapsedMs", 0)) / 1000.0
 			hints_used = int(save.get("hintsUsed", 0))
@@ -137,6 +146,8 @@ func _finish_generation() -> void:
 	tray.setup(model, texture)
 	_overlay.model = model
 	_overlay.texture = texture
+	_folder_window.model = model
+	_folder_window.texture = texture
 	if resumed:
 		var b: Dictionary = save.get("board", {})
 		board.set_view(float(b.get("zoom", 1.0)), Vector2(float(b.get("panX", 0.0)), float(b.get("panY", 0.0))))
@@ -170,6 +181,9 @@ func _process(delta: float) -> void:
 	if _mode == Mode.TRAY_PENDING and _pending_index >= 0 \
 			and Time.get_ticks_msec() - _press_ms >= LONG_PRESS_MS:
 		_pick_from_tray(_pending_index, _touches.get(_primary, _press_pos))
+	if _mode == Mode.WINDOW_PENDING and _window_index >= 0 \
+			and Time.get_ticks_msec() - _press_ms >= LONG_PRESS_MS:
+		_pick_from_folder(_window_index, _touches.get(_primary, _press_pos))
 	if _mode == Mode.PLACED_PENDING and Time.get_ticks_msec() - _press_ms >= PLACED_HOLD_MS:
 		_lift_placed(_pending_placed, _touches.get(_primary, _press_pos))
 	if board.hint_id >= 0:
@@ -192,11 +206,19 @@ func _notification(what: int) -> void:
 			if running:
 				save_game(false)
 		NOTIFICATION_WM_GO_BACK_REQUEST:
-			_leave()
+			_back()
 
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("ui_cancel"):
+		_back()
+
+
+## Back closes an open folder first, otherwise leaves the puzzle.
+func _back() -> void:
+	if _folder_window.is_open():
+		_close_folder()
+	else:
 		_leave()
 
 
@@ -324,6 +346,9 @@ func _build_ui() -> void:
 	vbox.add_child(tray)
 	_bottom_pad = Control.new()
 	vbox.add_child(_bottom_pad)
+
+	_folder_window = FolderWindow.new()
+	add_child(_folder_window)
 
 	_overlay = DragOverlay.new()
 	add_child(_overlay)
@@ -482,7 +507,9 @@ func _input(event: InputEvent) -> void:
 		elif mb.button_index == MOUSE_BUTTON_WHEEL_DOWN:
 			step = -1.0
 		if step != 0.0:
-			if _in(board, mb.position):
+			if _folder_window.is_open():
+				_folder_window.scroll_by(-step * _folder_window.cell * 0.5)
+			elif _in(board, mb.position):
 				board.zoom_at(mb.position - board.global_position, board.zoom * pow(1.15, step))
 			elif _in(tray, mb.position):
 				tray.scroll_by(-step * tray.cell)
@@ -509,12 +536,24 @@ func _begin_single(idx: int, pos: Vector2) -> void:
 	_press_pos = pos
 	_press_ms = Time.get_ticks_msec()
 	_mode = Mode.NONE
+	if _folder_window.is_open():
+		_mode = Mode.WINDOW_PENDING
+		_window_index = _folder_window.index_at(pos)
+		_last_y = pos.y
+		return
 	if _in(board, pos):
 		if board.minimap.visible and _in(board.minimap, pos):
 			_mode = Mode.MINIMAP
 			_minimap_jump(pos)
 			return
 		var wp := board.screen_to_world(_board_local(pos))
+		var f := board.folder_at(wp)
+		if f >= 0:
+			_drag_folder = model.raise_folder(f)
+			_folder_grab = model.folders[_drag_folder].pos - wp
+			board.refresh()
+			_mode = Mode.FOLDER_PENDING
+			return
 		var id := board.piece_at(wp)
 		if id >= 0:
 			var screen := board.global_position + board.world_to_screen(model.pos[id])
@@ -553,6 +592,25 @@ func _on_drag(e: InputEventScreenDrag) -> void:
 		Mode.PIECE_DRAG:
 			if e.index == _primary:
 				_overlay.move_to(e.position + _drag_offset)
+				_update_drop_target(e.position)
+		Mode.FOLDER_PENDING, Mode.FOLDER_DRAG:
+			if e.index == _primary and (_mode == Mode.FOLDER_DRAG or (e.position - _press_pos).length() > DRAG_SLOP):
+				_mode = Mode.FOLDER_DRAG
+				_move_folder(e.position)
+		Mode.WINDOW_PENDING:
+			if e.index != _primary:
+				return
+			var d := e.position - _press_pos
+			if d.length() > DRAG_SLOP:
+				var scrolls := _folder_window.max_scroll() > 0.0 and absf(d.y) > absf(d.x)
+				if _window_index >= 0 and not scrolls:
+					_pick_from_folder(_window_index, e.position)
+				else:
+					_mode = Mode.WINDOW_SCROLL
+		Mode.WINDOW_SCROLL:
+			if e.index == _primary:
+				_folder_window.scroll_by(_last_y - e.position.y)
+				_last_y = e.position.y
 		Mode.PAN:
 			if e.index == _primary:
 				board.set_zoom_anchored(board.zoom, _anchor, _board_local(e.position))
@@ -594,6 +652,19 @@ func _end_touch(idx: int, pos: Vector2) -> void:
 		Mode.PIECE_DRAG:
 			if idx == _primary:
 				_drop_piece(pos)
+		Mode.FOLDER_PENDING:
+			if idx == _primary:
+				_open_folder(_drag_folder)
+				_drag_folder = -1
+				_mode = Mode.NONE
+		Mode.FOLDER_DRAG:
+			if idx == _primary:
+				_drop_folder(pos)
+		Mode.WINDOW_PENDING:
+			if idx == _primary:
+				if _folder_window.on_close(pos) or not _folder_window.in_panel(pos):
+					_close_folder()
+				_mode = Mode.NONE
 		Mode.PINCH:
 			if _touches.size() == 1:
 				_primary = _touches.keys()[0]
@@ -672,15 +743,26 @@ func _drop_piece(finger: Vector2) -> void:
 	_drag_id = -1
 	_mode = Mode.NONE
 	_overlay.hide_piece()
+	board.set_drop_target(-1, -1)
 	if _in(tray, finger) or _in(_divider, finger):
 		model.put_in_tray(id, tray.insert_index_at(finger - tray.global_position))
 		tray.refresh()
 	else:
 		var wp := board.screen_to_world(_board_local(finger + _drag_offset))
+		var f := board.folder_at(wp)
+		var target := board.piece_under(wp) if f < 0 else -1
 		if wp.distance_to(pieces.centers[id]) <= pieces.cell.x * SNAP_TOLERANCE:
 			model.lock(id)
 			_on_snap()
+		elif f >= 0:
+			model.add_to_folder(f, id)
+			Game.vibrate(20)
+		elif target >= 0 and model.can_make_folder():
+			model.make_folder(target, id, _folder_color_for(id))
+			Game.vibrate(20)
 		else:
+			if target >= 0:
+				_show_toast("You can have up to %d folders" % PuzzleModel.FOLDER_COLORS)
 			model.put_on_board(id, board.clamp_to_workspace(wp))
 	unsaved = true
 	board.refresh()
@@ -689,12 +771,128 @@ func _drop_piece(finger: Vector2) -> void:
 		_complete_puzzle()
 
 
+## Highlights the folder or loose piece a dragged piece would drop into.
+func _update_drop_target(finger: Vector2) -> void:
+	if not _in(board, finger):
+		board.set_drop_target(-1, -1)
+		return
+	var wp := board.screen_to_world(_board_local(finger + _drag_offset))
+	if wp.distance_to(pieces.centers[_drag_id]) <= pieces.cell.x * SNAP_TOLERANCE:
+		board.set_drop_target(-1, -1)
+		return
+	var f := board.folder_at(wp)
+	var piece := board.piece_under(wp) if f < 0 and model.can_make_folder() else -1
+	board.set_drop_target(f, piece)
+
+
 ## Drops whatever is being dragged where it is (used before saving / leaving).
 func _finish_drag() -> void:
 	if _drag_id >= 0:
 		_drop_piece(_overlay.piece_pos - _drag_offset)
+	if _drag_folder >= 0:
+		_drag_folder = -1
+		board.set_drop_target(-1, -1)
 	_touches.clear()
 	_mode = Mode.NONE
+
+
+# --- Folders ------------------------------------------------------------------
+
+func _move_folder(finger: Vector2) -> void:
+	var wp := board.screen_to_world(_board_local(finger))
+	model.folders[_drag_folder].pos = board.clamp_to_workspace(wp + _folder_grab)
+	board.set_drop_target(board.folder_at(wp, _drag_folder), -1)
+	board.folder_layer.queue_redraw()
+	board.minimap.refresh()
+
+
+## A folder dropped on the tray empties into it; on another folder, merges into it.
+func _drop_folder(finger: Vector2) -> void:
+	var f := _drag_folder
+	_drag_folder = -1
+	_mode = Mode.NONE
+	board.set_drop_target(-1, -1)
+	if _in(tray, finger) or _in(_divider, finger):
+		model.folder_to_tray(f, tray.insert_index_at(finger - tray.global_position))
+		tray.refresh()
+		_update_counts()
+	else:
+		var into := board.folder_at(board.screen_to_world(_board_local(finger)), f)
+		if into >= 0:
+			model.merge_folders(f, into)
+			Game.vibrate(20)
+	unsaved = true
+	board.refresh()
+
+
+## Folder art for a new folder made with piece `id`: the art colour that piece
+## shows most, or a random unused colour if that one is taken (or the piece
+## has no clear colour, e.g. mostly black or grey).
+func _folder_color_for(id: int) -> int:
+	var free := model.free_colors()
+	var c := dominant_color(id)
+	return c if c in free else free.pick_random()
+
+
+## Hue centres (degrees) of the folder art colours, in strip order:
+## red, yellow, green, blue, purple.
+const FOLDER_HUES: Array[float] = [0.0, 50.0, 125.0, 215.0, 285.0]
+
+
+## Which folder art colour piece `id` shows most, or -1. Samples the piece's
+## area of the image on a grid, weighting each pixel by how vivid it is.
+func dominant_color(id: int) -> int:
+	var img := Game.puzzle_sample
+	if img == null:
+		return -1
+	var to_px := Vector2(img.get_width(), img.get_height()) / pieces.puzzle_size
+	var b := pieces.bounds[id]
+	var weight: Array[float] = [0.0, 0.0, 0.0, 0.0, 0.0]
+	var total := 0.0
+	var n := 0
+	for gy in 16:
+		for gx in 16:
+			var local := b.position + b.size * Vector2((gx + 0.5) / 16.0, (gy + 0.5) / 16.0)
+			if not pieces.contains(id, local):
+				continue
+			var px := ((pieces.centers[id] + local) * to_px).floor()
+			var col := img.get_pixelv(px.clamp(Vector2.ZERO, Vector2(img.get_width() - 1, img.get_height() - 1)))
+			n += 1
+			var w := col.s * col.v
+			if col.s < 0.2 or col.v < 0.15:
+				continue
+			var best := 0
+			var best_d := 360.0
+			for k in FOLDER_HUES.size():
+				var d := absf(fposmod(col.h * 360.0 - FOLDER_HUES[k] + 180.0, 360.0) - 180.0)
+				if d < best_d:
+					best_d = d
+					best = k
+			weight[best] += w
+			total += w
+	# Too little colour to call (dark or grey piece).
+	if n == 0 or total < n * 0.08:
+		return -1
+	return weight.find(weight.max())
+
+
+func _open_folder(f: int) -> void:
+	_folder_window.open(f)
+	Game.vibrate(10)
+
+
+func _close_folder() -> void:
+	_folder_window.close()
+
+
+## Pulls piece `index` out of the open folder and starts dragging it; the window closes.
+func _pick_from_folder(index: int, finger: Vector2) -> void:
+	var id := model.take_from_folder(_folder_window.folder, index)
+	_folder_window.close()
+	unsaved = true
+	board.refresh()
+	var lift := maxf(pieces.max_extent * board.view_scale() * 0.6, 56.0)
+	_begin_drag(id, finger, Vector2(0.0, -lift))
 
 
 func _on_snap() -> void:
@@ -775,6 +973,8 @@ func give_hint() -> void:
 	var rect := Rect2(b.position + pieces.centers[id], b.size).grow(margin)
 	if model.state[id] == PuzzleModel.ON_BOARD:
 		rect = rect.merge(Rect2(b.position + model.pos[id], b.size).grow(margin))
+	elif model.state[id] == PuzzleModel.IN_FOLDER:
+		rect = rect.merge(board.folder_rect(model.folder_of(id)).grow(margin))
 	else:
 		tray.scroll_to_index(model.tray.find(id))
 	board.bring_into_view(rect)
@@ -787,6 +987,7 @@ func _clear_hint() -> void:
 
 func _do_reset() -> void:
 	_clear_hint()
+	_close_folder()
 	model.reset()
 	elapsed = 0.0
 	hints_used = 0
@@ -818,6 +1019,7 @@ func save_data() -> Dictionary:
 		"placed": model.locked.size(),
 		"total": pieces.count,
 		"pieces": model.to_save(),
+		"folders": model.folders_to_save(),
 		"savedAt": Time.get_datetime_string_from_system(true) + "Z",
 	}
 

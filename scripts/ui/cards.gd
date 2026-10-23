@@ -80,20 +80,23 @@ static func _caption(text: String, badge: String) -> HBoxContainer:
 	return row
 
 
-## Heading with a carved groove line after it, used between card sections.
+## Heading over a deep carved groove that runs the full width, used between
+## card sections.
 static func divider(text: String) -> Control:
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 16)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 4)
 	var l := Label.new()
 	l.text = text
-	l.add_theme_font_size_override("font_size", 30)
-	row.add_child(l)
+	l.add_theme_font_size_override("font_size", 34)
+	box.add_child(l)
 	var line := Control.new()
-	line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	line.custom_minimum_size.y = 14
 	line.draw.connect(func() -> void:
-		var y := line.size.y * 0.5
-		line.draw_rect(Rect2(0, y - 2, line.size.x, 3), Color(0.16, 0.08, 0.03, 0.55))
-		line.draw_rect(Rect2(0, y + 1, line.size.x, 2), Color(1, 0.9, 0.75, 0.35)))
+		var w := line.size.x
+		# Shadowed upper lip, dark channel, then a lit lower edge.
+		line.draw_rect(Rect2(0, 2, w, 3), Color(0.1, 0.05, 0.02, 0.85))
+		line.draw_rect(Rect2(0, 5, w, 4), Color(0.2, 0.1, 0.04, 0.6))
+		line.draw_rect(Rect2(0, 9, w, 3), Color(1, 0.9, 0.72, 0.5)))
 	line.resized.connect(line.queue_redraw)
-	row.add_child(line)
-	return row
+	box.add_child(line)
+	return box

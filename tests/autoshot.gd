@@ -35,19 +35,19 @@ func _play(previous_id := 0) -> Node:
 
 func _run() -> void:
 	DirAccess.make_dir_recursive_absolute(out_dir)
-	for id in ["img_01", "img_02", "img_03", "img_04", "img_05"]:
+	for id in ["default_1", "default_2", "default_3"]:
 		Game.delete_save(id)
 	_resize(Vector2i(540, 960))
 	await _wait(0.8)
 	await _shot("01_home")
 
-	Game.image_id = "img_03"
+	Game.image_id = "default_3"
 	Game.go(Game.SCENE_SETUP)
 	await _wait(0.8)
 	await _shot("02_setup")
 
 	# Fresh Random Cut puzzle, partially solved.
-	Game.image_id = "img_03"
+	Game.image_id = "default_3"
 	Game.new_puzzle(256, CutGenerator.Style.RANDOM)
 	Game.go(Game.SCENE_PLAY)
 	var play := await _play()
@@ -119,8 +119,74 @@ func _run() -> void:
 	print("[autoshot] hold-lift placed piece: state=%d (1 = on board), locked %d -> %d" % [model.state[id0], locked_n, model.locked.size()])
 	await _shot("06b_lifted_placed_piece")
 
+	# Folders: drop a loose piece on another, add a tray piece, open it, drag one out.
+	play.board.set_view(1.0, play.board.workspace.get_center())
+	await _wait(0.1)
+	var folders_before: int = model.folders.size()
+	var pa: int = model.loose[0]
+	var pb: int = model.loose[1]
+	var from: Vector2 = play.board.global_position + play.board.world_to_screen(model.pos[pa])
+	var onto: Vector2 = play.board.global_position + play.board.world_to_screen(model.pos[pb])
+	_touch(from, true)
+	await _wait(0.05)
+	_drag(from.lerp(onto, 0.5))
+	await _wait(0.05)
+	_drag(onto)
+	await _wait(0.05)
+	_touch(onto, false)
+	await _wait(0.1)
+	var folder: Dictionary = model.folders.back() if model.folders.size() > folders_before else {}
+	print("[autoshot] folder made: %s ids=%s" % [not folder.is_empty(), folder.get("ids", [])])
+	# Keep the folder well above the tray so the lifted drop point stays on the board.
+	folder.pos = model.pieces.puzzle_size * Vector2(0.25, 0.3)
+	play.board.refresh()
+	play.tray.stop()
+	play.tray.scroll = 0.0
+	var fpos: Vector2 = play.board.global_position + play.board.world_to_screen(folder.pos)
+	start = play.tray.global_position + Vector2(play.tray.cell * 0.5, play.tray.cell * 0.5)
+	_touch(start, true)
+	await _wait(0.05)
+	_drag(start + Vector2(0, -40))
+	await _wait(0.05)
+	_drag(fpos - play._drag_offset)
+	await _wait(0.05)
+	await _shot("06c_folder_drop_target")
+	_touch(fpos - play._drag_offset, false)
+	await _wait(0.1)
+	print("[autoshot] tray piece into folder: size=%d" % folder.ids.size())
+	await _shot("06d_folder")
+	_touch(fpos, true)
+	await _wait(0.05)
+	_touch(fpos, false)
+	await _wait(0.3)
+	print("[autoshot] folder window open: ", play._folder_window.is_open())
+	await _shot("06e_folder_window")
+	var slot: Vector2 = play._folder_window.slot_center(0)
+	var out_to: Vector2 = play.board.global_position + play.board.size * Vector2(0.3, 0.2)
+	_touch(slot, true)
+	await _wait(0.05)
+	_drag(slot + Vector2(40, 0))
+	await _wait(0.05)
+	print("[autoshot] dragging out: window open=%s drag_id=%d" % [play._folder_window.is_open(), play._drag_id])
+	_drag(out_to)
+	await _wait(0.05)
+	_touch(out_to, false)
+	await _wait(0.1)
+	print("[autoshot] after drag-out: folder size=%d loose=%d" % [folder.ids.size(), model.loose.size()])
+	var fp0: Vector2 = folder.pos
+	_touch(fpos, true)
+	await _wait(0.05)
+	_drag(fpos + Vector2(30, -60))
+	await _wait(0.05)
+	_drag(fpos + Vector2(60, -120))
+	await _wait(0.05)
+	_touch(fpos + Vector2(60, -120), false)
+	await _wait(0.1)
+	print("[autoshot] folder moved: %s, window open=%s" % [folder.pos != fp0, play._folder_window.is_open()])
+	await _shot("06f_folder_moved")
+
 	play.save_game(true)
-	print("[autoshot] save exists: ", Game.has_save("img_03"), " progress: ", Game.save_progress("img_03"), "%")
+	print("[autoshot] save exists: ", Game.has_save("default_3"), " progress: ", Game.save_progress("default_3"), "%")
 
 	# Resume from save and verify state.
 	var locked_before: int = model.locked.size()
@@ -128,11 +194,12 @@ func _run() -> void:
 	Game.go(Game.SCENE_HOME)
 	await _wait(0.6)
 	await _shot("07_home_continue")
-	Game.image_id = "img_03"
+	Game.image_id = "default_3"
 	Game.resume_saved()
 	Game.go(Game.SCENE_PLAY)
 	play = await _play(old_id)
 	print("[autoshot] resume: locked %d -> %d, loose=%d" % [locked_before, play.model.locked.size(), play.model.loose.size()])
+	print("[autoshot] resume folders: ", play.model.folders.map(func(f: Dictionary) -> int: return f.ids.size()))
 
 	# Landscape layout.
 	_resize(Vector2i(1280, 720))
@@ -147,7 +214,7 @@ func _run() -> void:
 	await _shot("08c_back_to_portrait")
 
 	# Ribbon cut, 1024 pieces, zoomed in on a solved area.
-	Game.image_id = "img_01"
+	Game.image_id = "default_1"
 	Game.new_puzzle(1024, CutGenerator.Style.RIBBON)
 	var t0 := Time.get_ticks_msec()
 	Game.go(Game.SCENE_PLAY)
