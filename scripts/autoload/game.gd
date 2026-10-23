@@ -71,6 +71,7 @@ func _ready() -> void:
 	DirAccess.make_dir_recursive_absolute(PHOTO_DIR)
 	settings.load(SETTINGS_PATH)
 	_load_catalog()
+	_drop_unusable_saves()
 	get_tree().root.theme = _build_theme()
 	menu_icon = _make_menu_icon()
 	snap_sound = _make_snap_sound()
@@ -315,9 +316,20 @@ func read_save(id: String) -> Dictionary:
 	if not has_save(id):
 		return {}
 	var data = JSON.parse_string(FileAccess.get_file_as_string(save_path(id)))
-	if data is Dictionary and int(data.get("schemaVersion", 0)) == SAVE_SCHEMA:
+	if data is Dictionary and int(data.get("schemaVersion", 0)) == SAVE_SCHEMA \
+			and CutGenerator.find_style(String(data.get("cutStyle", "RIBBON"))) >= 0:
 		return data
 	return {}
+
+
+## Deletes saves that can't be loaded any more (old format or a retired cut
+## style), so Home doesn't list puzzles that can't be continued.
+func _drop_unusable_saves() -> void:
+	for f in DirAccess.get_files_at(SAVE_DIR):
+		if f.ends_with(".json"):
+			var id := f.get_basename()
+			if read_save(id).is_empty():
+				delete_save(id)
 
 
 ## Atomic write: temp file then rename, so a crash never leaves a half-written save.
@@ -386,7 +398,7 @@ func resume_saved() -> bool:
 	if data.is_empty():
 		return false
 	piece_target = int(data.get("pieceTarget", 256))
-	cut_style = CutGenerator.style_from_key(String(data.get("cutStyle", "RIBBON")))
+	cut_style = CutGenerator.find_style(String(data.get("cutStyle", "RIBBON")))
 	seed_value = int(data.get("seed", 0))
 	resume = data
 	return true

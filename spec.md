@@ -100,18 +100,22 @@ This means the grid adapts automatically if an image with another aspect ratio i
 
 ## 5. Cut Styles
 
-There are four cut styles. All are generated procedurally from a **seed**, so a saved puzzle can be rebuilt with identical shapes.
+There are six cut styles. All are generated procedurally from a **seed**, so a saved puzzle can be rebuilt with identical shapes.
 
 | Style | Description |
 |-------|-------------|
 | **Ribbon Cut** | A regular grid using the `cols × rows` layout from §4. Every interior edge gets a rounded knob (tab) on one side and a matching socket (blank) on the other. Pieces alternate in a checkerboard between two types: type A has tabs left and right and blanks top and bottom, and type B is the reverse. This gives the uniform ribbon look of commercial ribbon-cut puzzles. Knobs are Bézier curves with only small random changes in size and offset, so pieces look consistent but not identical. |
 | **Random Cut** | Irregular pieces. Start from the `cols × rows` grid of §4 and move every interior grid corner by up to ±12% of a cell, so piece sizes and edge angles vary. Each interior edge gets a slight random bow, a knob with random direction, size (±15%) and position along the edge (±7%). Piece count is the same as Ribbon Cut. A repair pass re-cuts any piece whose knobs would collide, using smaller, centred knobs. |
-| **Octagon Cut** | A grid of octagons with small diamond pieces in the gaps between their corners (`c×r` octagons plus `(c−1)(r−1)` diamonds; the frame pieces are cut flat by the border). The layout picks the `c × r` closest to the requested count with cells stretched no more than 0.8–1.25. Every shared edge gets a knob; diamonds mostly receive sockets so they lock into the octagons around them, and long octagon edges sometimes get two knobs. |
 | **Wavy Cut** | Organic, irregular pieces. Seeds are placed on the §4 grid and jittered ±30% of a cell, and the cells are their Voronoi regions clipped to the image. Every shared edge meanders (low-frequency waves) and carries 0–3 knobs, so pieces vary in shape and in the number of neighbours. |
+| **Angular Cut** | A honeycomb: every other row of cells is shifted half a cell, giving hexagonal cells. Every interior edge is bent into one deep chevron with a rounded tip (sometimes a two-bend zigzag) and has no knob, so neighbouring bends make interlocking boomerang and three-armed pieces, like laser-cut wooden puzzles. |
+| **Creative Cut** | Irregular cells, as in Wavy Cut, with edges that sway and carry curled, swirling hooks: a stroke that rises from the edge and curls round in a tightening spiral, like a breaking wave. Long edges carry two features, and about one in seven is a round knob instead of a curl. |
+| **Fantasy Cut** | Wildly irregular pieces. Seeds are scattered ±42% of a cell, then pushed apart so no piece is tiny, which gives pieces of clearly varied size. Edges swing widely and carry up to four knobs of mixed size, each leaning at its own angle, plus the occasional round lobe. |
 
 **Generation requirements**
 - Every interior edge is shared by exactly two pieces, and both pieces use the same curve with opposite orientation, so neighbors fit perfectly.
 - Edge pieces always have a straight outer border.
+- Wavy, Angular, Creative and Fantasy are built from cell polygons by one shared builder. If a piece's outline crosses itself, only the edges whose curves cross are re-cut, calmer each pass, so neighbouring pieces keep their shapes.
+- Saves record the cut style by key. A save whose style has been retired (such as the old Octagon Cut) can't be rebuilt, so it is deleted at launch.
 - Generating ~1024 pieces must finish in **under 1.5 s** on the reference device (see §10), on a background thread, with a progress indicator.
 - Each piece is stored as a polygon outline (the flattened curves), a bounding box, and its correct ("home") position.
 
@@ -311,7 +315,7 @@ Build with `godot --headless --export-debug "<preset name>"`, or `--export-relea
 
 ## 12. Acceptance Criteria
 
-1. All 5 bundled images can be started with every piece-count option and all four cut styles.
+1. All 5 bundled images can be started with every piece-count option and all six cut styles.
 2. Neighboring pieces fit together exactly, with no gaps or overlaps, in both styles.
 3. The board is on top and the tray is at the bottom in both portrait and landscape. Rotating the device mid-game loses no state.
 4. Pinch zoom (1×–8×), pan, and double-tap zoom work, and pieces can be dragged and snapped while zoomed in. The minimap appears above 1.5× zoom and moves the viewport when tapped.
