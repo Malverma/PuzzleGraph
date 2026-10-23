@@ -21,7 +21,7 @@ func _ready() -> void:
 		Game.go(Game.SCENE_HOME)
 		return
 	_target = int(Game.get_setting("setup_pieces", 256))
-	_style = clampi(int(Game.get_setting("setup_style", CutGenerator.Style.RIBBON)), 0, CutGenerator.STYLE_KEYS.size() - 1)
+	_style = maxi(0, CutGenerator.find_style(str(Game.get_setting("setup_style", "RIBBON"))))
 	var thumb := Game.load_thumb(Game.image_id)
 	if thumb:
 		_aspect = float(thumb.get_width()) / thumb.get_height()
@@ -92,7 +92,7 @@ func _ready() -> void:
 
 	options.add_child(_heading("Cut style"))
 	var styles := GridContainer.new()
-	styles.columns = 2
+	styles.columns = 3
 	styles.add_theme_constant_override("h_separation", 14)
 	styles.add_theme_constant_override("v_separation", 14)
 	options.add_child(styles)
@@ -103,7 +103,7 @@ func _ready() -> void:
 		b.button_group = style_group
 		b.button_pressed = s == _style
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		b.custom_minimum_size.y = 170
+		b.custom_minimum_size.y = 200
 		b.pressed.connect(_set_style.bind(s))
 		var box := VBoxContainer.new()
 		box.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -182,12 +182,12 @@ func _update_exact() -> void:
 		_count_buttons[i].text = str(CutGenerator.piece_count(g, _style))
 	var g := CutGenerator.layout_for(_target, _aspect, _style)
 	match _style:
-		CutGenerator.Style.OCTAGON:
-			_exact_label.text = "%d octagons + %d diamonds" % [g.x * g.y, (g.x - 1) * (g.y - 1)]
-		CutGenerator.Style.WAVY:
-			_exact_label.text = "Irregular pieces, about %d × %d" % [g.x, g.y]
-		_:
+		CutGenerator.Style.RIBBON, CutGenerator.Style.RANDOM:
 			_exact_label.text = "%d × %d grid" % [g.x, g.y]
+		CutGenerator.Style.ANGULAR:
+			_exact_label.text = "Honeycomb, about %d × %d" % [g.x, g.y]
+		_:
+			_exact_label.text = "Irregular pieces, about %d × %d" % [g.x, g.y]
 
 
 func _start() -> void:
@@ -199,7 +199,7 @@ func _start() -> void:
 
 func _launch_new() -> void:
 	Game.set_setting("setup_pieces", _target)
-	Game.set_setting("setup_style", _style)
+	Game.set_setting("setup_style", CutGenerator.STYLE_KEYS[_style])
 	Game.delete_save(Game.image_id)
 	Game.new_puzzle(_target, _style)
 	Game.go(Game.SCENE_PLAY)

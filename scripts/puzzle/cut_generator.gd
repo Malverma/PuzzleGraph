@@ -5,16 +5,16 @@ extends RefCounted
 ## Every interior edge is computed once and reused by the two pieces on either
 ## side of it, which guarantees neighbouring pieces fit exactly.
 ##
-## Ribbon and Random share a cols x rows grid (`generate()` below). Octagon and
-## Wavy are built by the generic cell builder (`_build_cells()`): a layout
+## Ribbon and Random share a cols x rows grid (`generate()` below). The other
+## styles are built by the generic cell builder (`_build_cells()`): a layout
 ## gives cell polygons, a profile function shapes each shared edge, and a
 ## repair pass re-cuts pieces whose knobs collide. New styles only need a
 ## layout and/or an edge profile.
 
-enum Style { RIBBON, RANDOM, OCTAGON, WAVY }
+enum Style { RIBBON, RANDOM, WAVY, ANGULAR, CREATIVE, FANTASY }
 
-const STYLE_KEYS: Array[String] = ["RIBBON", "RANDOM", "OCTAGON", "WAVY"]
-const STYLE_NAMES: Array[String] = ["Ribbon Cut", "Random Cut", "Octagon Cut", "Wavy Cut"]
+const STYLE_KEYS: Array[String] = ["RIBBON", "RANDOM", "WAVY", "ANGULAR", "CREATIVE", "FANTASY"]
+const STYLE_NAMES: Array[String] = ["Ribbon Cut", "Random Cut", "Wavy Cut", "Angular Cut", "Creative Cut", "Fantasy Cut"]
 
 ## Line segments used to flatten each cubic Bézier of an edge (3 per edge).
 const CURVE_STEPS := 8
@@ -29,39 +29,20 @@ static func grid_for(target: int, aspect: float) -> Vector2i:
 	return Vector2i(cols, rows)
 
 
-## Layout grid for a style. Octagon Cut adds a diamond at every interior grid
-## corner, so it uses a smaller grid whose total lands near `target`, keeping
-## cells within 25% of square.
-static func layout_for(target: int, aspect: float, style: int) -> Vector2i:
-	if style != Style.OCTAGON:
-		return grid_for(target, aspect)
-	var best := Vector2i(2, 2)
-	var best_d := 1 << 30
-	for r in range(1, 64):
-		var base := maxi(1, roundi(r * aspect))
-		for c: int in [base - 1, base, base + 1]:
-			if c < 1:
-				continue
-			var stretch := (aspect / c) * r  # cell width / height
-			if stretch < 0.8 or stretch > 1.25:
-				continue
-			var d := absi(piece_count(Vector2i(c, r), style) - target)
-			if d < best_d:
-				best_d = d
-				best = Vector2i(c, r)
-	return best
+## Layout grid for a style. Every style currently cuts one piece per grid
+## cell; a style whose pieces don't map 1:1 to cells would adjust it here.
+static func layout_for(target: int, aspect: float, _style: int) -> Vector2i:
+	return grid_for(target, aspect)
 
 
 ## Number of pieces a layout grid produces for a style.
-static func piece_count(grid: Vector2i, style: int) -> int:
-	if style == Style.OCTAGON:
-		return grid.x * grid.y + (grid.x - 1) * (grid.y - 1)
+static func piece_count(grid: Vector2i, _style: int) -> int:
 	return grid.x * grid.y
 
 
-static func style_from_key(key: String) -> int:
-	var i := STYLE_KEYS.find(key)
-	return i if i >= 0 else Style.RIBBON
+## -1 for keys of retired styles (saves made with them can't be rebuilt).
+static func find_style(key: String) -> int:
+	return STYLE_KEYS.find(key)
 
 
 ## Returns { "outlines": Array[PackedVector2Array], "centers": PackedVector2Array,
@@ -71,10 +52,15 @@ static func style_from_key(key: String) -> int:
 static func generate(cols: int, rows: int, size: Vector2, style: int, seed_value: int) -> Dictionary:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed_value
-	if style == Style.OCTAGON:
-		return _octagon(cols, rows, size, rng)
-	if style == Style.WAVY:
-		return _wavy(cols, rows, size, rng)
+	match style:
+		Style.WAVY:
+			return _wavy(cols, rows, size, rng)
+		Style.ANGULAR:
+			return _angular(cols, rows, size, rng)
+		Style.CREATIVE:
+			return _creative(cols, rows, size, rng)
+		Style.FANTASY:
+			return _fantasy(cols, rows, size, rng)
 	var cell := Vector2(size.x / cols, size.y / rows)
 	var unit := minf(cell.x, cell.y)
 	var random := style == Style.RANDOM
@@ -203,33 +189,46 @@ static func _piece_outline(c: int, r: int, cols: int, rows: int,
 	return poly
 
 
-## True if the outline has no self-intersections. Checks only segments whose
-## bounding boxes overlap, bucketed on a coarse grid, so it stays fast.
+## True if the outline has no self-intersections.
 static func _is_simple(p: PackedVector2Array) -> bool:
+	return _crossings(p, true).is_empty()
+
+
+## Indices of segments that cross another segment of the outline (empty for
+## a simple polygon); with `first_only` it stops at the first crossing.
+## Only segments sharing a cell of a coarse grid are compared, so it stays fast.
+static func _crossings(p: PackedVector2Array, first_only := false) -> PackedInt32Array:
+	var hits := PackedInt32Array()
 	var n := p.size()
-	var rect := Rect2(p[0], Vector2.ZERO)
+	var lo_all := p[0]
+	var hi_all := p[0]
 	for q in p:
-		rect = rect.expand(q)
-	const BUCKETS := 8
-	var bs := rect.size / BUCKETS + Vector2(0.001, 0.001)
-	var grid := {}
+		lo_all = lo_all.min(q)
+		hi_all = hi_all.max(q)
+	const B := 8
+	var bs := (hi_all - lo_all) / B + Vector2(0.001, 0.001)
+	var grid: Array[PackedInt32Array] = []
+	grid.resize(B * B)
 	for i in n:
 		var a := p[i]
 		var b := p[(i + 1) % n]
-		var lo := ((a.min(b) - rect.position) / bs).floor()
-		var hi := ((a.max(b) - rect.position) / bs).floor()
-		for gx in range(int(lo.x), int(hi.x) + 1):
-			for gy in range(int(lo.y), int(hi.y) + 1):
-				var key := gx * 64 + gy
-				if not grid.has(key):
-					grid[key] = []
-				for j in grid[key]:
-					if absi(i - j) <= 1 or absi(i - j) == n - 1:
+		var lo := Vector2i(((a.min(b) - lo_all) / bs).floor())
+		var hi := Vector2i(((a.max(b) - lo_all) / bs).floor())
+		for gx in range(lo.x, mini(hi.x, B - 1) + 1):
+			for gy in range(lo.y, mini(hi.y, B - 1) + 1):
+				var cell := grid[gx * B + gy]
+				for j in cell:
+					var gap := i - j
+					if gap <= 1 or gap == n - 1:
 						continue
 					if Geometry2D.segment_intersects_segment(a, b, p[j], p[(j + 1) % n]) != null:
-						return false
-				grid[key].append(i)
-	return true
+						hits.append(i)
+						hits.append(j)
+						if first_only:
+							return hits
+				cell.append(i)
+				grid[gx * B + gy] = cell
+	return hits
 
 
 static func _append(poly: PackedVector2Array, edge: PackedVector2Array, reversed: bool) -> void:
@@ -294,7 +293,7 @@ static func _edge(a: Vector2, b: Vector2, s: float, unit: float, random: bool,
 	return out
 
 
-# --- Generic cell builder (Octagon, Wavy) -------------------------------------
+# --- Generic cell builder (Wavy, Angular, Creative, Fantasy) -------------------------------------
 
 ## Vertices closer than this (puzzle units) are merged, so cells computed
 ## separately agree on shared corners despite float error.
@@ -348,38 +347,41 @@ static func _build_cells(cells: Array[PackedVector2Array], size: Vector2, profil
 		curves[key] = _edge_curve(verts[e[1]], verts[e[2]], profile.call(e[0], e[3], verts[e[1]].distance_to(verts[e[2]]), 0))
 
 	var outlines: Array[PackedVector2Array] = []
+	var owners: Array[PackedInt32Array] = []  # per outline point: key of the edge it belongs to
 	var centers := PackedVector2Array()
 	for i in polys.size():
-		outlines.append(_cell_outline(i, polys[i], n, verts, edges, curves))
+		var owner := PackedInt32Array()
+		outlines.append(_cell_outline(i, polys[i], n, verts, edges, curves, owner))
+		owners.append(owner)
 		centers.append(_centroid(cells[i]))
 
-	# Repair: re-cut the edges of pieces that are not simple polygons, calmer each pass.
+	# Repair: re-cut, calmer each pass, only the edges whose curves cross in
+	# a piece that is not a simple polygon, so neighbours keep their shapes.
 	var check: Array[int] = []
 	for i in polys.size():
 		check.append(i)
 	for pass_i in REPAIR_PASSES:
 		var touched := {}
+		var redo := {}
 		for i in check:
-			if _is_simple(outlines[i]):
-				continue
-			var ids := polys[i]
-			for k in ids.size():
-				var a := ids[k]
-				var b := ids[(k + 1) % ids.size()]
-				var key := mini(a, b) * n + maxi(a, b)
-				if not curves.has(key):
-					continue
-				var e: Array = edges[key]
-				levels[key] += 1
-				var length := verts[e[1]].distance_to(verts[e[2]])
-				curves[key] = _edge_curve(verts[e[1]], verts[e[2]], profile.call(e[0], e[3], length, levels[key]))
-				touched[e[0]] = true
-				touched[e[3]] = true
+			for seg in _crossings(outlines[i]):
+				var key: int = owners[i][seg]
+				if curves.has(key):
+					redo[key] = true
+		for key: int in redo:
+			var e: Array = edges[key]
+			levels[key] += 1
+			var length := verts[e[1]].distance_to(verts[e[2]])
+			curves[key] = _edge_curve(verts[e[1]], verts[e[2]], profile.call(e[0], e[3], length, levels[key]))
+			touched[e[0]] = true
+			touched[e[3]] = true
 		if touched.is_empty():
 			break
 		check.clear()
 		for i in touched:
-			outlines[i] = _cell_outline(i, polys[i], n, verts, edges, curves)
+			var owner := PackedInt32Array()
+			outlines[i] = _cell_outline(i, polys[i], n, verts, edges, curves, owner)
+			owners[i] = owner
 			check.append(i)
 	return { "outlines": outlines, "centers": centers, "border": border }
 
@@ -400,18 +402,23 @@ static func _snap_vertex(p: Vector2, verts: PackedVector2Array, buckets: Diction
 	return verts.size() - 1
 
 
+## Outline of cell i. `owner` receives, for every point, the key of the edge
+## whose segment starts there.
 static func _cell_outline(i: int, ids: PackedInt32Array, n: int, verts: PackedVector2Array,
-		edges: Dictionary, curves: Dictionary) -> PackedVector2Array:
+		edges: Dictionary, curves: Dictionary, owner: PackedInt32Array) -> PackedVector2Array:
 	var out := PackedVector2Array()
 	for k in ids.size():
 		var a := ids[k]
 		var b := ids[(k + 1) % ids.size()]
 		var key := mini(a, b) * n + maxi(a, b)
+		var before := out.size()
 		if not curves.has(key):
 			out.append(verts[a])
-			continue
-		var curve: PackedVector2Array = curves[key]
-		_append(out, curve, edges[key][0] != i)
+		else:
+			var curve: PackedVector2Array = curves[key]
+			_append(out, curve, edges[key][0] != i)
+		for m in out.size() - before:
+			owner.append(key)
 	return out
 
 
@@ -499,93 +506,6 @@ static func _wavy_line(rng: RandomNumberGenerator, amp: float, steps: int) -> Pa
 	return out
 
 
-# --- Octagon Cut ------------------------------------------------------------------
-
-## Truncated-square tiling: an octagon for every grid cell and a diamond at
-## every interior grid corner. Diamonds are nudged, resized and turned a
-## little; border corners slide along the border so it stays straight. Every
-## shared edge gets a knob; diamond knobs mostly push into the octagons, and
-## long octagon edges sometimes carry two.
-static func _octagon(cols: int, rows: int, size: Vector2, rng: RandomNumberGenerator) -> Dictionary:
-	var cs := Vector2(size.x / cols, size.y / rows)
-	var unit := minf(cs.x, cs.y)
-	var k0 := unit / (2.0 + sqrt(2.0))
-	var shift := 0.07
-	var dia := {}  # Vector2i(c, r) -> [N, E, S, W]
-	for r in range(1, rows):
-		for c in range(1, cols):
-			var center := Vector2(c * cs.x, r * cs.y) + Vector2(rng.randf_range(-shift, shift), rng.randf_range(-shift, shift)) * unit
-			var k := k0 * (1.0 + rng.randf_range(-0.25, 0.25))
-			var ang := deg_to_rad(rng.randf_range(-14.0, 14.0))
-			var pts := []
-			for q in [Vector2(0, -k), Vector2(k, 0), Vector2(0, k), Vector2(-k, 0)]:
-				pts.append(center + q.rotated(ang))
-			dia[Vector2i(c, r)] = pts
-	var top := {}
-	var bot := {}
-	for c in range(1, cols):
-		top[c] = Vector2(c * cs.x + rng.randf_range(-shift, shift) * unit, 0.0)
-		bot[c] = Vector2(c * cs.x + rng.randf_range(-shift, shift) * unit, size.y)
-	var left := {}
-	var right := {}
-	for r in range(1, rows):
-		left[r] = Vector2(0.0, r * cs.y + rng.randf_range(-shift, shift) * unit)
-		right[r] = Vector2(size.x, r * cs.y + rng.randf_range(-shift, shift) * unit)
-	var names := { "N": 0, "E": 1, "S": 2, "W": 3 }
-	var corner := func(r: int, c: int, first: String, second: String) -> Array:
-		if (r == 0 or r == rows) and (c == 0 or c == cols):
-			return [Vector2(c * cs.x, r * cs.y)]
-		if r == 0:
-			return [top[c]]
-		if r == rows:
-			return [bot[c]]
-		if c == 0:
-			return [left[r]]
-		if c == cols:
-			return [right[r]]
-		var d: Array = dia[Vector2i(c, r)]
-		return [d[names[first]], d[names[second]]]
-
-	var cells: Array[PackedVector2Array] = []
-	var is_diamond: Array[bool] = []
-	for r in rows:
-		for c in cols:
-			var poly := PackedVector2Array()
-			for p in corner.call(r, c, "S", "E") + corner.call(r, c + 1, "W", "S") \
-					+ corner.call(r + 1, c + 1, "N", "W") + corner.call(r + 1, c, "E", "N"):
-				poly.append(p)
-			cells.append(poly)
-			is_diamond.append(false)
-	for r in range(1, rows):
-		for c in range(1, cols):
-			cells.append(PackedVector2Array(dia[Vector2i(c, r)]))
-			is_diamond.append(true)
-
-	var profile := func(i: int, j: int, length: float, level: int) -> PackedVector2Array:
-		if level >= 4 or length < unit * 0.08:
-			return _wavy_line(rng, 0.02, 4)
-		var calm := pow(0.75, level)
-		var bow := _wave(rng, 0.05 * calm)
-		var pts := PackedVector2Array()
-		if is_diamond[j]:
-			var ks := clampf(0.055 * unit / length, 0.08, 0.15) * rng.randf_range(0.8, 1.2) * calm
-			pts = _knob(rng, rng.randf() < 0.8, ks, 0.05 * calm, CURVE_STEPS)
-		elif length > 0.65 * unit and rng.randf() < 0.35 and level == 0:
-			var inward := rng.randf() < 0.5
-			for half in [0.0, 0.5]:
-				var ks := clampf(0.06 * unit / (length / 2.0), 0.10, 0.16) * rng.randf_range(0.85, 1.15)
-				for q in _knob(rng, inward, ks, 0.05, CURVE_STEPS):
-					pts.append(Vector2(half + q.x / 2.0, q.y / 2.0))
-				inward = not inward
-		else:
-			var ks := clampf(0.055 * unit / length, 0.08, 0.12) * rng.randf_range(0.8, 1.25) * calm
-			pts = _knob(rng, rng.randf() < 0.5, ks, 0.05 * calm, CURVE_STEPS)
-		for k in pts.size():
-			pts[k] = Vector2(pts[k].x, pts[k].y + _wave_at(bow, pts[k].x))
-		return pts
-	return _build_cells(cells, size, profile)
-
-
 # --- Wavy Cut ---------------------------------------------------------------------
 
 ## Voronoi cells around jittered grid points (irregular, mostly 5-7 sided).
@@ -594,24 +514,7 @@ static func _octagon(cols: int, rows: int, size: Vector2, rng: RandomNumberGener
 static func _wavy(cols: int, rows: int, size: Vector2, rng: RandomNumberGenerator) -> Dictionary:
 	var cs := Vector2(size.x / cols, size.y / rows)
 	var unit := minf(cs.x, cs.y)
-	var seeds := PackedVector2Array()
-	for r in rows:
-		for c in cols:
-			seeds.append(Vector2(c + 0.5 + rng.randf_range(-0.3, 0.3), r + 0.5 + rng.randf_range(-0.3, 0.3)) * cs)
-	var frame := PackedVector2Array([Vector2.ZERO, Vector2(size.x, 0), size, Vector2(0, size.y)])
-	var cells: Array[PackedVector2Array] = []
-	for r in rows:
-		for c in cols:
-			var si := seeds[r * cols + c]
-			var poly := frame
-			# Voronoi neighbours of a jittered grid point lie within two cells.
-			for rr in range(maxi(0, r - 2), mini(rows, r + 3)):
-				for cc in range(maxi(0, c - 2), mini(cols, c + 3)):
-					if rr == r and cc == c:
-						continue
-					var sj := seeds[rr * cols + cc]
-					poly = _clip(poly, sj - si, (sj.length_squared() - si.length_squared()) * 0.5)
-			cells.append(poly)
+	var cells := _voronoi(_jittered_seeds(cols, rows, cs, 0.3, rng), cols, rows, size, 2)
 
 	var profile := func(_i: int, _j: int, length: float, level: int) -> PackedVector2Array:
 		if level >= 4:
@@ -639,4 +542,258 @@ static func _wavy(cols: int, rows: int, size: Vector2, rng: RandomNumberGenerato
 		for k in pts.size():
 			pts[k] = Vector2(pts[k].x, pts[k].y + _wave_at(meander, pts[k].x))
 		return pts
+	return _build_cells(cells, size, profile)
+
+
+# --- Voronoi layouts ----------------------------------------------------------------
+
+## One seed per grid cell, at the cell centre moved by up to ±`jitter` cells.
+static func _jittered_seeds(cols: int, rows: int, cs: Vector2, jitter: float, rng: RandomNumberGenerator) -> PackedVector2Array:
+	var seeds := PackedVector2Array()
+	for r in rows:
+		for c in cols:
+			seeds.append(Vector2(c + 0.5 + rng.randf_range(-jitter, jitter), r + 0.5 + rng.randf_range(-jitter, jitter)) * cs)
+	return seeds
+
+
+## Voronoi cells of `seeds` (one per grid cell, row-major), clipped to the
+## puzzle. Only seeds within `reach` grid cells are tested as neighbours,
+## which is exact as long as no seed strays further than that from its cell.
+static func _voronoi(seeds: PackedVector2Array, cols: int, rows: int, size: Vector2, reach: int) -> Array[PackedVector2Array]:
+	var frame := PackedVector2Array([Vector2.ZERO, Vector2(size.x, 0), size, Vector2(0, size.y)])
+	var cells: Array[PackedVector2Array] = []
+	for r in rows:
+		for c in cols:
+			var si := seeds[r * cols + c]
+			var poly := frame
+			for rr in range(maxi(0, r - reach), mini(rows, r + reach + 1)):
+				for cc in range(maxi(0, c - reach), mini(cols, c + reach + 1)):
+					if rr == r and cc == c:
+						continue
+					var sj := seeds[rr * cols + cc]
+					poly = _clip(poly, sj - si, (sj.length_squared() - si.length_squared()) * 0.5)
+			cells.append(poly)
+	return cells
+
+
+## Adds the wobble `w` to the v of every point.
+static func _add_wave(pts: PackedVector2Array, w: PackedFloat32Array) -> PackedVector2Array:
+	for k in pts.size():
+		pts[k] = Vector2(pts[k].x, pts[k].y + _wave_at(w, pts[k].x))
+	return pts
+
+
+## Places `feature` (local points of one sub-edge, ending at (1, 0)) into
+## span m of n equal spans of the edge.
+static func _append_span(out: PackedVector2Array, feature: PackedVector2Array, m: int, n: int) -> void:
+	var span := 1.0 / n
+	for q in feature:
+		out.append(Vector2((m + q.x) * span, q.y * span))
+
+
+# --- Angular Cut --------------------------------------------------------------------
+
+## Honeycomb of cells whose every edge is bent into a deep chevron with a
+## rounded tip (sometimes a zigzag), with no knobs. Neighbouring chevrons give
+## the interlocking boomerang and three-armed pieces of laser-cut wood puzzles.
+static func _angular(cols: int, rows: int, size: Vector2, rng: RandomNumberGenerator) -> Dictionary:
+	var cs := Vector2(size.x / cols, size.y / rows)
+	var unit := minf(cs.x, cs.y)
+	# Every other row shifted half a cell gives hexagonal cells.
+	var seeds := PackedVector2Array()
+	for r in rows:
+		var shift := 0.25 if r % 2 == 0 else 0.75
+		for c in cols:
+			seeds.append(Vector2(c + shift + rng.randf_range(-0.06, 0.06), r + 0.5 + rng.randf_range(-0.06, 0.06)) * cs)
+	var cells := _voronoi(seeds, cols, rows, size, 2)
+
+	var profile := func(_i: int, _j: int, length: float, level: int) -> PackedVector2Array:
+		if level >= 3 or length < 0.18 * unit:
+			return _wavy_line(rng, 0.03, 4)
+		var calm := pow(0.6, level)
+		var s := 1.0 if rng.randf() < 0.5 else -1.0
+		var corners: Array[Vector2] = [Vector2.ZERO]
+		if level == 0 and length > 0.45 * unit and rng.randf() < 0.3:
+			var d := rng.randf_range(0.24, 0.3)
+			corners.append(Vector2(rng.randf_range(0.27, 0.33), s * d))
+			corners.append(Vector2(rng.randf_range(0.67, 0.73), -s * d))
+		else:
+			corners.append(Vector2(0.5 + rng.randf_range(-0.1, 0.1), s * rng.randf_range(0.42, 0.52) * calm))
+		corners.append(Vector2(1, 0))
+		return _rounded_polyline(corners, 0.4, 6)
+	return _build_cells(cells, size, profile)
+
+
+## Polyline through `corners` (first (0, 0), last (1, 0)) with every inner
+## corner rounded by a quadratic curve starting `cut` of the way along each
+## leg. Excludes the first point.
+static func _rounded_polyline(corners: Array[Vector2], cut: float, steps: int) -> PackedVector2Array:
+	var out := PackedVector2Array()
+	for k in range(1, corners.size() - 1):
+		var p := corners[k]
+		var a := p.lerp(corners[k - 1], cut)
+		var b := p.lerp(corners[k + 1], cut)
+		out.append(a)
+		for i in range(1, steps + 1):
+			var t := i / float(steps)
+			out.append(a.lerp(p, t).lerp(p.lerp(b, t), t))
+	out.append(corners[corners.size() - 1])
+	return out
+
+
+# --- Creative Cut -------------------------------------------------------------------
+
+## Irregular cells whose edges sway and carry curled, swirling hooks (and
+## the odd round knob), like hand-cut artisan puzzles.
+static func _creative(cols: int, rows: int, size: Vector2, rng: RandomNumberGenerator) -> Dictionary:
+	var cs := Vector2(size.x / cols, size.y / rows)
+	var unit := minf(cs.x, cs.y)
+	var cells := _voronoi(_jittered_seeds(cols, rows, cs, 0.3, rng), cols, rows, size, 2)
+
+	var profile := func(_i: int, _j: int, length: float, level: int) -> PackedVector2Array:
+		if level >= 4:
+			return _wavy_line(rng, 0.03, 6)
+		var calm := pow(0.75, level)
+		var n := 2 if length > 1.5 * unit else 1 if length > 0.3 * unit else 0
+		if level >= 2:
+			n = mini(n, 1)
+		if n == 0:
+			return _add_wave(_wavy_line(rng, 0.06, 8), _wave(rng, 0.25))
+		var pts := PackedVector2Array()
+		for m in n:
+			var sub := length / n
+			var inward := rng.randf() < 0.5
+			var sway := _wave(rng, 0.3 * calm)
+			if rng.randf() < 0.85 and level < 3:
+				var radius := clampf(0.15 * unit / sub, 0.12, 0.3) * rng.randf_range(0.85, 1.15) * calm
+				_append_span(pts, _curl(rng, inward, radius, sway), m, n)
+			else:
+				var ks := clampf(0.06 * unit / sub, 0.10, 0.16) * calm
+				_append_span(pts, _add_wave(_knob(rng, inward, ks, 0.06 * calm, 6), sway), m, n)
+		return pts
+	return _build_cells(cells, size, profile)
+
+
+## Edge from (0, 0) to (1, 0) with a hook that rises from the edge and curls
+## round in a tightening spiral, like a breaking wave. `radius` is the curl
+## radius as a fraction of the edge. The base line follows the wobble `sway`;
+## the hook moves with it rigidly so the spiral never shears into itself.
+## Excludes the first point.
+static func _curl(rng: RandomNumberGenerator, inward: bool, radius: float, sway: PackedFloat32Array) -> PackedVector2Array:
+	var hand := 1.0 if rng.randf() < 0.5 else -1.0
+	var sweep := deg_to_rad(rng.randf_range(210.0, 290.0))
+	var hw := radius * 0.34          # half the stroke width at the root
+	var stem := radius * 1.15        # height where the curl starts
+	var root := 0.5 - 0.75 * radius + rng.randf_range(-0.05, 0.05)
+	# Centre line of the stroke, drawn curling to the right (+u) and mirrored for hand < 0.
+	var line := PackedVector2Array([Vector2(root, 0.0), Vector2(root, stem * 0.5)])
+	var o := Vector2(root + radius, stem)
+	const N := 10
+	for k in N + 1:
+		var t := k / float(N)
+		var th := PI - sweep * t
+		line.append(o + Vector2(cos(th), sin(th)) * radius * (1.0 - 0.45 * t))
+	var width := func(k: int) -> float:
+		return hw * (1.0 - 0.3 * maxf(0.0, (k - 2) / float(N)))
+	# Outer side out to the tip, a round cap, then the inner side back.
+	var left := PackedVector2Array()
+	var right := PackedVector2Array()
+	for k in line.size():
+		var tg := (line[mini(k + 1, line.size() - 1)] - line[maxi(k - 1, 0)]).normalized()
+		var nrm := Vector2(-tg.y, tg.x)
+		left.append(line[k] + nrm * width.call(k))
+		right.append(line[k] - nrm * width.call(k))
+	var last := line.size() - 1
+	var end_tan := (line[last] - line[last - 1]).normalized()
+	var end_n := Vector2(-end_tan.y, end_tan.x)
+	var tab := PackedVector2Array(left)
+	for i in range(1, 4):
+		var a := PI * i / 4.0
+		tab.append(line[last] + (end_n * cos(a) + end_tan * sin(a)) * width.call(last))
+	for k in range(last, -1, -1):
+		tab.append(right[k])
+	if hand < 0.0:
+		# Mirroring flips the winding, so walk the tab backwards.
+		var mirrored := PackedVector2Array()
+		for k in range(tab.size() - 1, -1, -1):
+			mirrored.append(Vector2(1.0 - tab[k].x, tab[k].y))
+		tab = mirrored
+	var s := 1.0 if inward else -1.0
+	var start := tab[0].x
+	var end := tab[tab.size() - 1].x
+	var lift := _wave_at(sway, (start + end) * 0.5)
+	var out := PackedVector2Array()
+	const BASE := 3
+	for i in range(1, BASE):
+		var u := start * i / float(BASE)
+		out.append(Vector2(u, _wave_at(sway, u)))
+	for q in tab:
+		out.append(Vector2(q.x, q.y * s + lift))
+	for i in range(1, BASE + 1):
+		var u := lerpf(end, 1.0, i / float(BASE))
+		out.append(Vector2(u, _wave_at(sway, u)))
+	return out
+
+
+# --- Fantasy Cut --------------------------------------------------------------------
+
+## Wildly irregular pieces: strongly scattered (but not crowded) cells of
+## varied size, edges that swing widely and carry up to four knobs of mixed
+## sizes that lean at odd angles, plus the occasional round lobe.
+static func _fantasy(cols: int, rows: int, size: Vector2, rng: RandomNumberGenerator) -> Dictionary:
+	var cs := Vector2(size.x / cols, size.y / rows)
+	var unit := minf(cs.x, cs.y)
+	var seeds := _jittered_seeds(cols, rows, cs, 0.42, rng)
+	# Push apart seeds that landed too close, so no piece is tiny.
+	var dmin := 0.55 * unit
+	for it in 3:
+		for r in rows:
+			for c in cols:
+				var i := r * cols + c
+				for rr in range(r, mini(rows, r + 2)):
+					for cc in range(maxi(0, c - 1), mini(cols, c + 2)):
+						var j := rr * cols + cc
+						if j <= i:
+							continue
+						var d := seeds[j] - seeds[i]
+						var dl := d.length()
+						if dl < dmin and dl > 1e-3:
+							var push := d / dl * (dmin - dl) * 0.5
+							seeds[i] -= push
+							seeds[j] += push
+		for k in seeds.size():
+			seeds[k] = seeds[k].clamp(cs * 0.05, size - cs * 0.05)
+	var cells := _voronoi(seeds, cols, rows, size, 3)
+
+	var profile := func(_i: int, _j: int, length: float, level: int) -> PackedVector2Array:
+		if level >= 4:
+			return _wavy_line(rng, 0.04, 6)
+		var calm := pow(0.7, level)
+		var n := 4 if length > 1.5 * unit else 3 if length > 1.0 * unit else 2 if length > 0.55 * unit else 1 if length > 0.25 * unit else 0
+		if level >= 2:
+			n = mini(n, 1)
+		var swing := _wave(rng, 0.22 * calm)
+		if n == 0:
+			return _add_wave(_wavy_line(rng, 0.08, 8), swing)
+		var pts := PackedVector2Array()
+		for m in n:
+			var sub := length / n
+			var inward := rng.randf() < 0.5
+			if rng.randf() < 0.15 and level == 0:
+				# A round lobe with no neck.
+				var lobe := PackedVector2Array()
+				var h := rng.randf_range(0.12, 0.2) * (1.0 if inward else -1.0)
+				for i in range(1, 9):
+					var u := i / 8.0
+					lobe.append(Vector2(u, h * sin(PI * u)))
+				_append_span(pts, lobe, m, n)
+				continue
+			var ks := clampf(0.06 * unit / sub, 0.09, 0.19) * rng.randf_range(0.7, 1.3) * calm
+			var knob := _knob(rng, inward, ks, 0.08 * calm, 6)
+			# Lean the knob by shearing it along the edge.
+			var lean := rng.randf_range(-0.5, 0.5) * calm
+			for k in knob.size():
+				knob[k] = Vector2(knob[k].x + lean * absf(knob[k].y), knob[k].y)
+			_append_span(pts, knob, m, n)
+		return _add_wave(pts, swing)
 	return _build_cells(cells, size, profile)
