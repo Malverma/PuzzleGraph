@@ -19,3 +19,4 @@ __pycache__/
 /iconnew.avif
 /issue*.png
 /issue*.png.import
+*.idsig

@@ -122,7 +122,7 @@ func _start_generation() -> void:
 	texture = Game.load_puzzle_texture(Game.image_id)
 	var aspect := float(texture.get_width()) / texture.get_height()
 	var size_world := Vector2(Game.PUZZLE_HEIGHT * aspect, Game.PUZZLE_HEIGHT)
-	var grid := CutGenerator.grid_for(Game.piece_target, aspect)
+	var grid := CutGenerator.layout_for(Game.piece_target, aspect, Game.cut_style)
 	pieces = PieceSet.new()
 	_thread = Thread.new()
 	_thread.start(pieces.compute.bind(grid, size_world, Game.cut_style, Game.seed_value))
@@ -426,8 +426,7 @@ func _actual_count() -> int:
 	var aspect := 4.0 / 3.0
 	if thumb:
 		aspect = float(thumb.get_width()) / thumb.get_height()
-	var g := CutGenerator.grid_for(Game.piece_target, aspect)
-	return g.x * g.y
+	return CutGenerator.piece_count(CutGenerator.layout_for(Game.piece_target, aspect, Game.cut_style), Game.cut_style)
 
 
 func _draw_grip(grip: Control) -> void:

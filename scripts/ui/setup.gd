@@ -10,6 +10,8 @@ var _aspect := 4.0 / 3.0
 var _body: BoxContainer
 var _margin: MarginContainer
 var _exact_label: Label
+## Piece-count buttons, in PIECE_TARGETS order; their labels follow the style.
+var _count_buttons: Array[Button] = []
 var _overwrite_dialog: ConfirmationDialog
 var _has_save := false
 
@@ -19,7 +21,7 @@ func _ready() -> void:
 		Game.go(Game.SCENE_HOME)
 		return
 	_target = int(Game.get_setting("setup_pieces", 256))
-	_style = int(Game.get_setting("setup_style", CutGenerator.Style.RIBBON))
+	_style = clampi(int(Game.get_setting("setup_style", CutGenerator.Style.RIBBON)), 0, CutGenerator.STYLE_KEYS.size() - 1)
 	var thumb := Game.load_thumb(Game.image_id)
 	if thumb:
 		_aspect = float(thumb.get_width()) / thumb.get_height()
@@ -75,8 +77,6 @@ func _ready() -> void:
 	var count_group := ButtonGroup.new()
 	for t in Game.PIECE_TARGETS:
 		var b := Button.new()
-		var g := CutGenerator.grid_for(t, _aspect)
-		b.text = str(g.x * g.y)
 		b.toggle_mode = true
 		b.button_group = count_group
 		b.button_pressed = t == _target
@@ -84,23 +84,26 @@ func _ready() -> void:
 		b.custom_minimum_size.y = 72
 		b.pressed.connect(_set_target.bind(t))
 		counts.add_child(b)
+		_count_buttons.append(b)
 	_exact_label = Label.new()
 	_exact_label.add_theme_color_override("font_color", Game.COLOR_TEXT_DIM)
 	_exact_label.add_theme_font_size_override("font_size", 22)
 	options.add_child(_exact_label)
 
 	options.add_child(_heading("Cut style"))
-	var styles := HBoxContainer.new()
-	styles.add_theme_constant_override("separation", 14)
+	var styles := GridContainer.new()
+	styles.columns = 2
+	styles.add_theme_constant_override("h_separation", 14)
+	styles.add_theme_constant_override("v_separation", 14)
 	options.add_child(styles)
 	var style_group := ButtonGroup.new()
-	for s in [CutGenerator.Style.RIBBON, CutGenerator.Style.RANDOM]:
+	for s in CutGenerator.STYLE_KEYS.size():
 		var b := Button.new()
 		b.toggle_mode = true
 		b.button_group = style_group
 		b.button_pressed = s == _style
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		b.custom_minimum_size.y = 190
+		b.custom_minimum_size.y = 170
 		b.pressed.connect(_set_style.bind(s))
 		var box := VBoxContainer.new()
 		box.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -169,11 +172,22 @@ func _set_target(t: int) -> void:
 
 func _set_style(s: int) -> void:
 	_style = s
+	_update_exact()
 
 
+## Exact piece counts for the chosen style, and a note on its layout.
 func _update_exact() -> void:
-	var g := CutGenerator.grid_for(_target, _aspect)
-	_exact_label.text = "%d × %d grid" % [g.x, g.y]
+	for i in _count_buttons.size():
+		var g := CutGenerator.layout_for(Game.PIECE_TARGETS[i], _aspect, _style)
+		_count_buttons[i].text = str(CutGenerator.piece_count(g, _style))
+	var g := CutGenerator.layout_for(_target, _aspect, _style)
+	match _style:
+		CutGenerator.Style.OCTAGON:
+			_exact_label.text = "%d octagons + %d diamonds" % [g.x * g.y, (g.x - 1) * (g.y - 1)]
+		CutGenerator.Style.WAVY:
+			_exact_label.text = "Irregular pieces, about %d × %d" % [g.x, g.y]
+		_:
+			_exact_label.text = "%d × %d grid" % [g.x, g.y]
 
 
 func _start() -> void:
