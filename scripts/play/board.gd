@@ -12,8 +12,8 @@ const Minimap := preload("res://scripts/play/minimap.gd")
 const FolderLayer := preload("res://scripts/play/folder_layer.gd")
 ## Folder size as a multiple of the largest piece, but never smaller than
 ## FOLDER_MIN_PX on screen so it stays easy to tap.
-const FOLDER_SCALE := 1.6
-const FOLDER_MIN_PX := 150.0
+const FOLDER_SCALE := 1.2
+const FOLDER_MIN_PX := 112.0
 
 var model: PuzzleModel
 var texture: Texture2D

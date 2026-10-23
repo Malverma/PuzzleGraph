@@ -422,11 +422,22 @@ func safe_insets(viewport: Viewport) -> Vector2:
 	var top := 0.0
 	var bottom := 0.0
 	for r: Rect2 in DisplayServer.get_display_cutouts():
-		if r.get_center().y < win.y * 0.5:
+		if _on_top_edge(r, win):
 			top = maxf(top, r.end.y)
-		else:
+		elif _on_bottom_edge(r, win):
 			bottom = maxf(bottom, win.y - r.position.y)
 	return Vector2(top, bottom) * (viewport.get_visible_rect().size.y / win.y)
+
+
+## Cutouts in the top or bottom quarter of the screen. In landscape the camera
+## hole sits on the left or right edge, part way down; it must not count as a
+## top or bottom inset (it used to be taken as a bottom one, padding half the screen).
+func _on_top_edge(r: Rect2, win: Vector2i) -> bool:
+	return r.has_area() and r.end.y <= win.y * 0.25
+
+
+func _on_bottom_edge(r: Rect2, win: Vector2i) -> bool:
+	return r.has_area() and r.position.y >= win.y * 0.75
 
 
 ## The cutouts along the top edge merged into one rect, in viewport units
@@ -439,7 +450,7 @@ func top_cutout(viewport: Viewport) -> Rect2:
 		return Rect2()
 	var out := Rect2()
 	for r: Rect2 in DisplayServer.get_display_cutouts():
-		if r.has_area() and r.get_center().y < win.y * 0.5:
+		if _on_top_edge(r, win):
 			out = r if not out.has_area() else out.merge(r)
 	var k := viewport.get_visible_rect().size / Vector2(win)
 	return Rect2(out.position * k, out.size * k)

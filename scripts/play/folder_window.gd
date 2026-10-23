@@ -1,12 +1,18 @@
 extends Control
-## Window listing the pieces inside one board folder. Pieces are dragged out
-## of it onto the board or tray; the grid scrolls vertically when it doesn't
-## fit. Input is routed here by play.gd.
+## Window listing the pieces inside one board folder. It pops out of the
+## folder itself (below it when there is room, otherwise above) with a tail
+## pointing back at it. Pieces are dragged out of it onto the board or tray;
+## the grid scrolls vertically when it doesn't fit. Input is routed here by play.gd.
 
 const PAD := 24.0
 const HEADER_H := 76.0
 const MIN_CELL := 140.0
 const CLOSE_R := 30.0
+const MAX_W := 720.0
+## Gap kept between the window and the screen edges.
+const EDGE := 16.0
+const TAIL_W := 44.0
+const TAIL_H := 22.0
 
 var model: PuzzleModel
 var texture: Texture2D
@@ -16,7 +22,12 @@ var scroll := 0.0
 var cell := MIN_CELL
 var columns := 3
 var panel := Rect2()
+## Returns the folder's rect on screen, so the window can follow it.
+var _anchor: Callable
+## Tail triangle from the panel edge to the folder.
+var _tail := PackedVector2Array()
 var _style: StyleBoxTexture
+var _wood := Color("#b0703f")
 var _grid: Control
 
 
@@ -24,6 +35,11 @@ func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_style = Game.wood("panel", 20)
+	var tex_img := _style.texture.get_image()
+	if tex_img:
+		if tex_img.is_compressed():
+			tex_img.decompress()
+		_wood = tex_img.get_pixel(tex_img.get_width() / 2, tex_img.get_height() / 2)
 	_grid = Control.new()
 	_grid.clip_contents = true
 	_grid.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -34,13 +50,20 @@ func _ready() -> void:
 	hide()
 
 
-func open(f: int) -> void:
+## Opens folder `f`; `anchor` returns the folder's screen rect.
+func open(f: int, anchor: Callable) -> void:
 	folder = f
+	_anchor = anchor
 	scroll = 0.0
 	show()
 	_layout()
+	# Grow out of the folder.
+	pivot_offset = _tail[1] if _tail.size() == 3 else panel.get_center()
+	scale = Vector2.ONE * 0.4
 	modulate.a = 0.0
-	create_tween().tween_property(self, "modulate:a", 1.0, 0.12)
+	var t := create_tween().set_parallel().set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	t.tween_property(self, "scale", Vector2.ONE, 0.2)
+	t.tween_property(self, "modulate:a", 1.0, 0.12)
 
 
 func close() -> void:
@@ -59,14 +82,27 @@ func _ids() -> Array:
 func _layout() -> void:
 	if not is_open():
 		return
-	var pw := minf(size.x - 48.0, 960.0)
+	var a: Rect2 = _anchor.call()
+	var pw := minf(size.x - EDGE * 2.0, MAX_W)
 	var inner := pw - PAD * 2.0
 	columns = maxi(3, int(inner / MIN_CELL))
 	cell = inner / columns
 	var rows := ceili(_ids().size() / float(columns))
-	var grid_h := minf(rows * cell, maxf(cell, size.y * 0.7 - HEADER_H))
+	var want := HEADER_H + rows * cell + PAD
+	var below := size.y - EDGE - (a.end.y + TAIL_H)
+	var above := a.position.y - TAIL_H - EDGE
+	var down := want <= below or below >= above
+	var room := below if down else above
+	var grid_h := minf(rows * cell, maxf(cell, room - HEADER_H - PAD))
 	var ph := HEADER_H + grid_h + PAD
-	panel = Rect2((size.x - pw) * 0.5, (size.y - ph) * 0.5, pw, ph)
+	var x := clampf(a.get_center().x - pw * 0.5, EDGE, size.x - EDGE - pw)
+	var y := a.end.y + TAIL_H if down else a.position.y - TAIL_H - ph
+	y = clampf(y, EDGE, maxf(EDGE, size.y - EDGE - ph))
+	panel = Rect2(x, y, pw, ph)
+	var tx := clampf(a.get_center().x, panel.position.x + TAIL_W, panel.end.x - TAIL_W)
+	var edge_y := panel.position.y if down else panel.end.y
+	var tip := Vector2(tx, a.end.y if down else a.position.y)
+	_tail = PackedVector2Array([Vector2(tx - TAIL_W * 0.5, edge_y), tip, Vector2(tx + TAIL_W * 0.5, edge_y)])
 	_grid.position = panel.position + Vector2(PAD, HEADER_H)
 	_grid.size = Vector2(inner, grid_h)
 	scroll = clampf(scroll, 0.0, max_scroll())
@@ -118,8 +154,16 @@ func slot_center(i: int) -> Vector2:
 func _draw() -> void:
 	if not is_open():
 		return
-	draw_rect(Rect2(Vector2.ZERO, size), Color(0, 0, 0, 0.55))
+	draw_rect(Rect2(Vector2.ZERO, size), Color(0, 0, 0, 0.3))
 	draw_rect(panel.grow(6.0), Color(0, 0, 0, 0.35))
+	# Tail back to the folder, under the panel so it joins the wood edge.
+	var outline := _tail.duplicate()
+	var dir := (_tail[1] - (_tail[0] + _tail[2]) * 0.5).normalized()
+	outline[0] -= Vector2(3, 0)
+	outline[2] += Vector2(3, 0)
+	outline[1] += dir * 3.0
+	draw_colored_polygon(outline, Color(0.1, 0.05, 0.02, 0.9))
+	draw_colored_polygon(_tail, _wood)
 	_style.draw(get_canvas_item(), panel)
 	var font := get_theme_default_font()
 	var n := _ids().size()
